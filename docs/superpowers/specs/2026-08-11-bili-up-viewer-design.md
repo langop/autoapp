@@ -1,7 +1,7 @@
 # Bilibili UP 动态与评论桌面查看器 — 设计文档
 
 **日期：** 2026-08-11  
-**状态：** 待实现  
+**状态：** 已实现（见 docs/superpowers/plans/2026-08-11-bili-up-viewer.md）  
 **技术选型：** Electron + Node.js（主进程）+ 原生 JS（渲染进程）
 
 ## 目标
@@ -35,7 +35,7 @@ Bilibili public APIs
 - **Renderer**：输入、列表、详情、收藏交互；不直接访问 B 站。
 - **Preload**：暴露白名单 API，关闭 Node 集成给页面。
 - **Main**：封装请求头（UA、Referer）、超时、重试、错误归一；可选读取 Cookie。
-- **Store**：`data/favorites.json` 持久化收藏的 UP。
+- **Store**：`data/favorites.json` 持久化收藏的 UP（实现使用 `app.getPath('userData')/favorites.json`）。
 
 ## 用户流程
 
