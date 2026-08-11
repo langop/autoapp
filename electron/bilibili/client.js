@@ -72,6 +72,12 @@ function createClient({ cookie = '', delayMs = 200 } = {}) {
         });
       }
       if (!res.ok) {
+        if (res.status === 412) {
+          throw new BiliRequestError(mapBiliError(-412));
+        }
+        if (res.status === 352) {
+          throw new BiliRequestError(mapBiliError(-352));
+        }
         throw new BiliRequestError({
           code: res.status,
           message: `HTTP ${res.status}`,
