@@ -204,6 +204,10 @@ app.whenReady().then(() => {
     wrap(async (_e, { uid, enabled }) => favorites.setNotify(uid, enabled)),
   );
   ipcMain.handle(
+    'reorderFavorites',
+    wrap(async (_e, uids) => favorites.reorder(uids)),
+  );
+  ipcMain.handle(
     'getDynamics',
     wrap(async (_e, payload) => fetchDynamics(client, payload || {})),
   );

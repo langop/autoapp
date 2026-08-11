@@ -56,4 +56,24 @@ describe('favorites store', () => {
     );
     assert.equal(store.list()[0].notifyEnabled, false);
   });
+
+  it('reorders by uid list and persists', () => {
+    store.add({ uid: '1', name: 'A', avatar: '', savedAt: 1 });
+    store.add({ uid: '2', name: 'B', avatar: '', savedAt: 2 });
+    store.add({ uid: '3', name: 'C', avatar: '', savedAt: 3 });
+    // add unshifts → current order [3,2,1]
+    store.reorder(['1', '3', '2']);
+    assert.deepEqual(store.list().map((x) => x.uid), ['1', '3', '2']);
+    const disk = JSON.parse(fs.readFileSync(file, 'utf8'));
+    assert.deepEqual(disk.map((x) => x.uid), ['1', '3', '2']);
+  });
+
+  it('ignores unknown uids and appends missing ones in original relative order', () => {
+    store.add({ uid: '1', name: 'A', avatar: '', savedAt: 1 });
+    store.add({ uid: '2', name: 'B', avatar: '', savedAt: 2 });
+    store.add({ uid: '3', name: 'C', avatar: '', savedAt: 3 });
+    // current [3,2,1]; request only 2 then unknown 9; missing 3 then 1 append
+    store.reorder(['2', '9']);
+    assert.deepEqual(store.list().map((x) => x.uid), ['2', '3', '1']);
+  });
 });

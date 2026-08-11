@@ -164,6 +164,25 @@ async function confirmRemoveFavorite(fav) {
   }
 }
 
+const FAV_DRAG_THRESHOLD_PX = 8;
+
+function clearFavDragStyles(root) {
+  root.querySelectorAll('.fav-card.dragging, .fav-card.drag-over').forEach((el) => {
+    el.classList.remove('dragging', 'drag-over');
+  });
+}
+
+async function persistFavoriteOrder(box) {
+  const uids = [...box.querySelectorAll('.fav-card')].map((el) => el.dataset.uid);
+  try {
+    await call(window.biliApi.reorderFavorites, uids);
+    await refreshFavorites();
+  } catch (e) {
+    $('home-error').textContent = e.message || '排序保存失败';
+    await refreshFavorites();
+  }
+}
+
 async function refreshFavorites() {
   state.favorites = await call(window.biliApi.listFavorites);
   const box = $('fav-list');
@@ -172,11 +191,15 @@ async function refreshFavorites() {
     box.innerHTML = '<p class="muted">暂无收藏</p>';
     return;
   }
+  let favDragSnapshot = null;
+
   state.favorites.forEach((fav, index) => {
     const el = document.createElement('div');
     el.className = `fav-card tone-${index % 4}`;
+    el.dataset.uid = String(fav.uid);
+    el.draggable = true;
     el.innerHTML = `
-      <img class="fav-avatar" src="${escapeHtml(toDisplayUrl(fav.avatar || ''))}" alt="" />
+      <img class="fav-avatar" draggable="false" src="${escapeHtml(toDisplayUrl(fav.avatar || ''))}" alt="" />
       <div class="fav-body">
         <div class="fav-name">${escapeHtml(fav.name || '未知 UP')}</div>
         <div class="muted fav-uid">UID ${escapeHtml(fav.uid)}</div>
@@ -186,6 +209,81 @@ async function refreshFavorites() {
         <button class="fav-unfav" type="button">取消收藏</button>
       </div>
     `;
+    const avatar = el.querySelector('.fav-avatar');
+    if (avatar) avatar.draggable = false;
+
+    let pointerDown = null;
+    let suppressClick = false;
+
+    el.addEventListener('pointerdown', (e) => {
+      if (e.target.closest('.fav-actions')) return;
+      pointerDown = { x: e.clientX, y: e.clientY };
+      suppressClick = false;
+    });
+
+    el.addEventListener('dragstart', (e) => {
+      if (e.target.closest?.('.fav-actions')) {
+        e.preventDefault();
+        return;
+      }
+      suppressClick = true;
+      favDragSnapshot = [...box.querySelectorAll('.fav-card')];
+      el.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', String(fav.uid));
+      box.classList.add('reordering');
+    });
+
+    el.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      const over = e.currentTarget;
+      if (over.classList.contains('dragging')) return;
+      box.querySelectorAll('.fav-card.drag-over').forEach((n) => {
+        if (n !== over) n.classList.remove('drag-over');
+      });
+      over.classList.add('drag-over');
+      const dragging = box.querySelector('.fav-card.dragging');
+      if (!dragging || dragging === over) return;
+      const cards = [...box.querySelectorAll('.fav-card')];
+      const from = cards.indexOf(dragging);
+      const to = cards.indexOf(over);
+      if (from < 0 || to < 0 || from === to) return;
+      if (from < to) over.after(dragging);
+      else over.before(dragging);
+    });
+
+    el.addEventListener('dragleave', (e) => {
+      if (!e.currentTarget.contains(e.relatedTarget)) {
+        e.currentTarget.classList.remove('drag-over');
+      }
+    });
+
+    el.addEventListener('drop', (e) => {
+      e.preventDefault();
+      clearFavDragStyles(box);
+      box.classList.remove('reordering');
+    });
+
+    // Prefer dragend persist (Windows-stable); avoid double-save with drop
+    el.addEventListener('dragend', async (e) => {
+      const cancelled = e.dataTransfer?.dropEffect === 'none';
+      if (cancelled && favDragSnapshot) {
+        for (const card of favDragSnapshot) {
+          box.appendChild(card);
+        }
+      }
+      favDragSnapshot = null;
+      const uids = [...box.querySelectorAll('.fav-card')].map((n) => n.dataset.uid);
+      const before = state.favorites.map((f) => String(f.uid));
+      clearFavDragStyles(box);
+      box.classList.remove('reordering');
+      pointerDown = null;
+      if (!cancelled && uids.join(',') !== before.join(',')) {
+        await persistFavoriteOrder(box);
+      }
+    });
+
     const notifyBtn = el.querySelector('.fav-notify');
     notifyBtn.onclick = async (e) => {
       e.stopPropagation();
@@ -197,12 +295,33 @@ async function refreshFavorites() {
         $('home-error').textContent = err.message || '提醒设置失败';
       }
     };
+    notifyBtn.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+    });
     const unfavBtn = el.querySelector('.fav-unfav');
     unfavBtn.onclick = (e) => {
       e.stopPropagation();
       confirmRemoveFavorite(fav);
     };
-    el.onclick = () => openFavoriteDynamics(fav.uid);
+    unfavBtn.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+    });
+
+    el.onclick = (e) => {
+      if (e.target.closest('.fav-actions')) return;
+      if (suppressClick) {
+        suppressClick = false;
+        return;
+      }
+      if (pointerDown) {
+        const dx = e.clientX - pointerDown.x;
+        const dy = e.clientY - pointerDown.y;
+        if (Math.hypot(dx, dy) >= FAV_DRAG_THRESHOLD_PX) return;
+      }
+      openFavoriteDynamics(fav.uid);
+    };
     box.appendChild(el);
   });
 }

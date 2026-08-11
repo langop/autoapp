@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('biliApi', {
   removeFavorite: (uid) => ipcRenderer.invoke('removeFavorite', uid),
   setFavoriteNotify: (uid, enabled) =>
     ipcRenderer.invoke('setFavoriteNotify', { uid, enabled }),
+  reorderFavorites: (uids) => ipcRenderer.invoke('reorderFavorites', uids),
   getDynamics: (payload) => ipcRenderer.invoke('getDynamics', payload),
   getComments: (payload) => ipcRenderer.invoke('getComments', payload),
   getSettings: () => ipcRenderer.invoke('getSettings'),

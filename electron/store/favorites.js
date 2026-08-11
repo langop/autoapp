@@ -58,6 +58,28 @@ function createFavoritesStore(filePath) {
       write(read().filter((x) => String(x.uid) !== String(uid)));
       return { ok: true };
     },
+    reorder(uids) {
+      const list = read();
+      const byUid = new Map(list.map((item) => [String(item.uid), item]));
+      const seen = new Set();
+      const next = [];
+      for (const raw of uids || []) {
+        const id = String(raw);
+        if (seen.has(id)) continue;
+        const item = byUid.get(id);
+        if (!item) continue;
+        next.push(item);
+        seen.add(id);
+      }
+      for (const item of list) {
+        const id = String(item.uid);
+        if (seen.has(id)) continue;
+        next.push(item);
+        seen.add(id);
+      }
+      write(next);
+      return { ok: true };
+    },
   };
 }
 
