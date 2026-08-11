@@ -1,6 +1,4 @@
 node_modules/
-.superpowers/
-.worktrees/
 data/favorites.json
 .env
 *.log
