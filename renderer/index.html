@@ -10,10 +10,47 @@
     <div id="app">
       <header class="top">
         <h1>Bili UP Viewer</h1>
+        <p class="muted">输入 UID → 查看资料 → 收藏 → 动态与评论</p>
       </header>
-      <main id="view-home" class="view"></main>
-      <main id="view-profile" class="view hidden"></main>
-      <main id="view-dynamics" class="view hidden"></main>
+
+      <main id="view-home" class="view">
+        <div class="row">
+          <input id="uid-input" type="text" placeholder="输入 UP 主 UID，例如 2" />
+          <button id="btn-search" class="primary" type="button">查询</button>
+        </div>
+        <p id="home-error" class="err"></p>
+        <h2>已收藏</h2>
+        <div id="fav-list" class="list"></div>
+      </main>
+
+      <main id="view-profile" class="view hidden">
+        <button id="btn-back-home" type="button">← 返回</button>
+        <div id="profile-card" class="profile" style="margin-top:12px"></div>
+        <p id="profile-error" class="err"></p>
+        <div class="row" style="margin-top:12px">
+          <button id="btn-toggle-fav" type="button">收藏</button>
+          <button id="btn-open-dynamics" class="primary" type="button">查看动态</button>
+        </div>
+      </main>
+
+      <main id="view-dynamics" class="view hidden">
+        <button id="btn-back-profile" type="button">← 返回资料</button>
+        <div class="split" style="margin-top:12px">
+          <section>
+            <h2>动态</h2>
+            <div id="dyn-list" class="list"></div>
+            <button id="btn-more-dyn" type="button" style="margin-top:10px">加载更多动态</button>
+            <p id="dyn-error" class="err"></p>
+          </section>
+          <section>
+            <h2>评论</h2>
+            <p id="cmt-hint" class="muted">选择一条动态查看评论</p>
+            <div id="cmt-list" class="list"></div>
+            <button id="btn-more-cmt" type="button" class="hidden" style="margin-top:10px">加载更多评论</button>
+            <p id="cmt-error" class="err"></p>
+          </section>
+        </div>
+      </main>
     </div>
     <script src="app.js"></script>
   </body>
