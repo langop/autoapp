@@ -2,56 +2,122 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' https: data:; style-src 'self' 'unsafe-inline'; script-src 'self'" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' https: http: data: bili-media:; style-src 'self' 'unsafe-inline'; script-src 'self'; frame-src https://player.bilibili.com https://www.bilibili.com https://*.bilibili.com; media-src https: blob:;" />
     <title>Bili UP Viewer</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <div id="app">
-      <header class="top">
-        <h1>Bili UP Viewer</h1>
-        <p class="muted">输入 UID → 查看资料 → 收藏 → 动态与评论</p>
-      </header>
-
       <main id="view-home" class="view">
         <div class="row">
-          <input id="uid-input" type="text" placeholder="输入 UP 主 UID，例如 2" />
+          <input id="uid-input" type="text" placeholder="输入 UP 主 UID" />
           <button id="btn-search" class="primary" type="button">查询</button>
         </div>
         <p id="home-error" class="err"></p>
-        <h2>已收藏</h2>
-        <div id="fav-list" class="list"></div>
+        <div class="section-row">
+          <h2 class="section-title">已收藏</h2>
+          <button id="btn-open-settings" type="button">设置</button>
+        </div>
+        <div id="fav-list" class="list scroll-pane"></div>
       </main>
 
       <main id="view-profile" class="view hidden">
-        <button id="btn-back-home" type="button">← 返回</button>
-        <div id="profile-card" class="profile" style="margin-top:12px"></div>
+        <div class="nav-bar">
+          <button id="btn-back-home" type="button">← 返回</button>
+        </div>
+        <div id="profile-card" class="profile"></div>
         <p id="profile-error" class="err"></p>
-        <div class="row" style="margin-top:12px">
-          <button id="btn-toggle-fav" type="button">收藏</button>
-          <button id="btn-open-dynamics" class="primary" type="button">查看动态</button>
+        <div class="row actions">
+          <button id="btn-toggle-fav" type="button" class="flex-1">收藏</button>
+          <button id="btn-open-dynamics" class="primary flex-1" type="button">查看动态</button>
         </div>
       </main>
 
       <main id="view-dynamics" class="view hidden">
-        <button id="btn-back-profile" type="button">← 返回资料</button>
-        <div class="split" style="margin-top:12px">
-          <section>
-            <h2>动态</h2>
-            <div id="dyn-list" class="list"></div>
-            <button id="btn-more-dyn" type="button" style="margin-top:10px">加载更多动态</button>
-            <p id="dyn-error" class="err"></p>
-          </section>
-          <section>
-            <h2>评论</h2>
-            <p id="cmt-hint" class="muted">选择一条动态查看评论</p>
-            <div id="cmt-list" class="list"></div>
-            <button id="btn-more-cmt" type="button" class="hidden" style="margin-top:10px">加载更多评论</button>
-            <p id="cmt-error" class="err"></p>
-          </section>
+        <div class="nav-bar">
+          <button id="btn-back-profile" type="button">← 资料</button>
+          <span id="dyn-count" class="muted"></span>
+          <button id="btn-refresh-dyn" type="button">刷新</button>
         </div>
+        <div id="dyn-list" class="list scroll-pane"></div>
+        <p id="dyn-error" class="err float-err"></p>
+        <button id="btn-more-dyn" type="button" class="fab-more">加载更多</button>
+      </main>
+
+      <main id="view-comments" class="view hidden">
+        <div class="nav-bar">
+          <button id="btn-back-dynamics" type="button">← 动态</button>
+          <span class="nav-title">评论</span>
+          <span class="nav-spacer"></span>
+        </div>
+        <div id="cmt-source" class="cmt-source"></div>
+        <div class="cmt-toolbar">
+          <p id="cmt-hint" class="muted hint"></p>
+          <div class="cmt-sort">
+            <button id="btn-cmt-sort-time" class="sort-btn active" type="button">时间</button>
+            <button id="btn-cmt-sort-hot" class="sort-btn" type="button">热度</button>
+          </div>
+        </div>
+        <div id="cmt-list" class="list scroll-pane forum"></div>
+        <p id="cmt-error" class="err float-err"></p>
+        <button id="btn-more-cmt" type="button" class="fab-more hidden">加载更多</button>
+      </main>
+
+      <main id="view-settings" class="view hidden">
+        <div class="nav-bar">
+          <button id="btn-back-from-settings" type="button">← 返回</button>
+          <span class="nav-title">设置</span>
+          <span class="nav-spacer"></span>
+        </div>
+        <p class="muted">粘贴浏览器 Cookie；留空则用环境变量。</p>
+        <label class="field-label" for="cookie-input">B 站 Cookie</label>
+        <textarea
+          id="cookie-input"
+          rows="7"
+          placeholder="SESSDATA=...; bili_jct=..."
+        ></textarea>
+        <div class="settings-section">
+          <h3 class="section-title">动态提醒</h3>
+          <label class="check-label">
+            <input id="notify-enabled" type="checkbox" />
+            开启动态提醒
+          </label>
+          <label class="field-label" for="notify-interval">检查间隔（分钟）</label>
+          <input id="notify-interval" type="number" min="5" max="60" step="1" value="15" />
+        </div>
+        <div class="row actions">
+          <button id="btn-save-settings" class="primary flex-1" type="button">保存</button>
+          <button id="btn-clear-cookie" class="flex-1" type="button">清除</button>
+        </div>
+        <p id="settings-msg" class="ok"></p>
+        <p id="settings-error" class="err"></p>
+      </main>
+
+      <main id="view-player" class="view player-view hidden">
+        <div class="nav-bar player-nav">
+          <button id="btn-close-player" type="button">← 返回</button>
+          <span id="player-title" class="nav-title">视频</span>
+          <span class="nav-spacer"></span>
+        </div>
+        <webview
+          id="player-webview"
+          class="player-webview"
+          partition="persist:bili-player"
+          allowpopups
+        ></webview>
+        <p id="player-error" class="err player-error"></p>
       </main>
     </div>
+
+    <div id="lightbox" class="lightbox hidden" aria-hidden="true">
+      <button id="lb-close" class="lb-close" type="button" aria-label="关闭">×</button>
+      <button id="lb-prev" class="lb-nav prev" type="button" aria-label="上一张">‹</button>
+      <img id="lb-img" alt="" />
+      <button id="lb-next" class="lb-nav next" type="button" aria-label="下一张">›</button>
+      <div id="lb-counter" class="lb-counter"></div>
+    </div>
+
     <script src="app.js"></script>
   </body>
 </html>

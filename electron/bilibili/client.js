@@ -35,6 +35,7 @@ function mapBiliError(code, message) {
 }
 
 function createClient({ cookie = '', delayMs = 200, timeoutMs = 15000 } = {}) {
+  let currentCookie = cookie || '';
   let chain = Promise.resolve();
 
   function enqueue(fn) {
@@ -44,6 +45,10 @@ function createClient({ cookie = '', delayMs = 200, timeoutMs = 15000 } = {}) {
       () => new Promise((r) => setTimeout(r, delayMs)),
     );
     return run;
+  }
+
+  function setCookie(next) {
+    currentCookie = typeof next === 'string' ? next.trim() : '';
   }
 
   async function getJson(url, params = {}) {
@@ -59,7 +64,7 @@ function createClient({ cookie = '', delayMs = 200, timeoutMs = 15000 } = {}) {
         Referer: 'https://www.bilibili.com/',
         Origin: 'https://www.bilibili.com',
       };
-      if (cookie) headers.Cookie = cookie;
+      if (currentCookie) headers.Cookie = currentCookie;
 
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -103,7 +108,7 @@ function createClient({ cookie = '', delayMs = 200, timeoutMs = 15000 } = {}) {
     });
   }
 
-  return { getJson };
+  return { getJson, setCookie };
 }
 
 module.exports = { createClient, mapBiliError, BiliRequestError };

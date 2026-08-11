@@ -40,4 +40,20 @@ describe('favorites store', () => {
     fs.writeFileSync(file, '{not-json', 'utf8');
     assert.deepEqual(store.list(), []);
   });
+
+  it('defaults notifyEnabled to false and can toggle', () => {
+    store.add({ uid: '1', name: 'A', avatar: '', savedAt: 1 });
+    assert.equal(store.list()[0].notifyEnabled, false);
+    store.setNotify('1', true);
+    assert.equal(store.list()[0].notifyEnabled, true);
+  });
+
+  it('normalizes missing notifyEnabled on list', () => {
+    fs.writeFileSync(
+      file,
+      JSON.stringify([{ uid: '1', name: 'A', avatar: '', savedAt: 1 }]),
+      'utf8',
+    );
+    assert.equal(store.list()[0].notifyEnabled, false);
+  });
 });

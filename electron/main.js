@@ -1,14 +1,87 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const {
+  app,
+  BrowserWindow,
+  ipcMain,
+  Menu,
+  session,
+  protocol,
+  net,
+  shell,
+  Notification,
+} = require('electron');
 const path = require('path');
 const { createFavoritesStore } = require('./store/favorites');
+const { createSettingsStore } = require('./store/settings');
+const { createWatchStore } = require('./store/watch');
 const { createClient, BiliRequestError } = require('./bilibili/client');
 const { fetchUserInfo } = require('./bilibili/user');
 const { fetchDynamics } = require('./bilibili/dynamics');
 const { fetchComments } = require('./bilibili/comments');
+const { createScheduler } = require('./notify/scheduler');
+const { runWatchRound } = require('./notify/watcher');
+
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'bili-media',
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      bypassCSP: true,
+      stream: true,
+      corsEnabled: true,
+    },
+  },
+]);
 
 const favoritesPath = path.join(app.getPath('userData'), 'favorites.json');
+const settingsPath = path.join(app.getPath('userData'), 'settings.json');
+const watchPath = path.join(app.getPath('userData'), 'watch.json');
 const favorites = createFavoritesStore(favoritesPath);
-const client = createClient({ cookie: process.env.BILI_COOKIE || '' });
+const settings = createSettingsStore(settingsPath);
+const watch = createWatchStore(watchPath);
+
+const savedCookie = settings.get().cookie || '';
+const client = createClient({
+  cookie: savedCookie || process.env.BILI_COOKIE || '',
+});
+
+let mainWindow = null;
+const activeNotifications = new Set();
+
+function showDesktopNotify(payload) {
+  if (!Notification.isSupported()) return;
+  const n = new Notification({ title: payload.title, body: payload.body });
+  activeNotifications.add(n);
+  const release = () => activeNotifications.delete(n);
+  n.on('click', () => {
+    release();
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+      mainWindow.webContents.send('open-favorite-dynamics', { uid: payload.uid });
+    }
+  });
+  n.on('close', release);
+  n.on('failed', release);
+  n.show();
+}
+
+async function runNotifyWatchRound() {
+  const cfg = settings.get();
+  if (!cfg.notifyEnabled) return;
+  await runWatchRound({
+    favorites: favorites.list(),
+    fetchDynamicsForUid: (uid) => fetchDynamics(client, { uid, offset: '' }),
+    watch,
+    onNotify: showDesktopNotify,
+  });
+}
+
+const scheduler = createScheduler({
+  getIntervalMs: () => settings.get().notifyIntervalMin * 60 * 1000,
+  onTick: runNotifyWatchRound,
+});
 
 function wrap(fn) {
   return async (...args) => {
@@ -27,20 +100,92 @@ function wrap(fn) {
   };
 }
 
+function setupMediaProtocol() {
+  // Proxy Bilibili CDN images with a correct Referer.
+  // Direct <img> from file:// often gets 403 from hdslb.com.
+  protocol.handle('bili-media', async (request) => {
+    try {
+      const incoming = new URL(request.url);
+      const target = new URL(`https://${incoming.host}${incoming.pathname}${incoming.search}`);
+      const host = target.hostname;
+      if (
+        !host.endsWith('hdslb.com') &&
+        !host.endsWith('bilibili.com') &&
+        !host.endsWith('bilivideo.com')
+      ) {
+        return new Response('forbidden host', { status: 403 });
+      }
+      return net.fetch(target.toString(), {
+        headers: {
+          Referer: 'https://www.bilibili.com/',
+          Origin: 'https://www.bilibili.com',
+          'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+        },
+      });
+    } catch (e) {
+      return new Response(String(e?.message || e), { status: 500 });
+    }
+  });
+}
+
+function setupImageHeaders() {
+  session.defaultSession.webRequest.onBeforeSendHeaders(
+    {
+      urls: [
+        '*://*.hdslb.com/*',
+        '*://*.bilibili.com/*',
+        '*://*.bilivideo.com/*',
+      ],
+    },
+    (details, callback) => {
+      const headers = { ...details.requestHeaders };
+      headers.Referer = 'https://www.bilibili.com/';
+      headers.Origin = 'https://www.bilibili.com';
+      callback({ requestHeaders: headers });
+    },
+  );
+}
+
 function createWindow() {
-  const win = new BrowserWindow({
-    width: 1100,
-    height: 760,
+  mainWindow = new BrowserWindow({
+    width: 390,
+    height: 633,
+    minWidth: 360,
+    minHeight: 360,
+    maxWidth: 480,
+    useContentSize: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      webviewTag: true,
     },
   });
-  win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
+  mainWindow.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
+  mainWindow.on('closed', () => {
+    mainWindow = null;
+  });
+}
+
+app.on('web-contents-created', (_event, contents) => {
+  if (contents.getType() === 'webview') {
+    contents.setWindowOpenHandler(({ url }) => {
+      if (/^https?:\/\//i.test(url)) contents.loadURL(url);
+      return { action: 'deny' };
+    });
+  }
+});
+
+if (process.platform === 'win32') {
+  app.setAppUserModelId('com.bili.up.viewer');
 }
 
 app.whenReady().then(() => {
+  setupMediaProtocol();
+  setupImageHeaders();
+  Menu.setApplicationMenu(null);
+
   ipcMain.handle('getUserInfo', wrap(async (_e, uid) => fetchUserInfo(client, uid)));
   ipcMain.handle('listFavorites', wrap(async () => favorites.list()));
   ipcMain.handle(
@@ -49,7 +194,14 @@ app.whenReady().then(() => {
   );
   ipcMain.handle(
     'removeFavorite',
-    wrap(async (_e, uid) => favorites.remove(uid)),
+    wrap(async (_e, uid) => {
+      watch.remove(uid);
+      return favorites.remove(uid);
+    }),
+  );
+  ipcMain.handle(
+    'setFavoriteNotify',
+    wrap(async (_e, { uid, enabled }) => favorites.setNotify(uid, enabled)),
   );
   ipcMain.handle(
     'getDynamics',
@@ -59,7 +211,45 @@ app.whenReady().then(() => {
     'getComments',
     wrap(async (_e, payload) => fetchComments(client, payload || {})),
   );
+  ipcMain.handle(
+    'getSettings',
+    wrap(async () => settings.get()),
+  );
+  ipcMain.handle(
+    'saveSettings',
+    wrap(async (_e, payload) => {
+      const next = settings.save(payload || {});
+      client.setCookie(next.cookie || process.env.BILI_COOKIE || '');
+      scheduler.restart();
+      return { ok: true, settings: next };
+    }),
+  );
+  ipcMain.handle(
+    'openExternal',
+    wrap(async (_e, rawUrl) => {
+      const u = new URL(String(rawUrl || ''));
+      if (u.protocol !== 'http:' && u.protocol !== 'https:') {
+        throw new Error('非法链接');
+      }
+      const host = u.hostname.toLowerCase();
+      if (
+        !host.endsWith('bilibili.com') &&
+        host !== 'b23.tv' &&
+        !host.endsWith('.b23.tv')
+      ) {
+        throw new Error('仅允许打开 B 站链接');
+      }
+      await shell.openExternal(u.toString());
+      return { ok: true };
+    }),
+  );
+
   createWindow();
+  scheduler.start();
+});
+
+app.on('before-quit', () => {
+  scheduler.stop();
 });
 
 app.on('window-all-closed', () => {

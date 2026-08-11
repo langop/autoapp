@@ -22,9 +22,16 @@ function createFavoritesStore(filePath) {
     fs.writeFileSync(filePath, JSON.stringify(list, null, 2), 'utf8');
   }
 
+  function normalize(item) {
+    return {
+      ...item,
+      notifyEnabled: Boolean(item.notifyEnabled),
+    };
+  }
+
   return {
     list() {
-      return read();
+      return read().map(normalize);
     },
     add(user) {
       const list = read().filter((x) => String(x.uid) !== String(user.uid));
@@ -33,8 +40,18 @@ function createFavoritesStore(filePath) {
         name: user.name || '',
         avatar: user.avatar || '',
         savedAt: user.savedAt || Date.now(),
+        notifyEnabled: Boolean(user.notifyEnabled),
       });
       write(list);
+      return { ok: true };
+    },
+    setNotify(uid, enabled) {
+      const list = read();
+      const item = list.find((x) => String(x.uid) === String(uid));
+      if (item) {
+        item.notifyEnabled = Boolean(enabled);
+        write(list);
+      }
       return { ok: true };
     },
     remove(uid) {

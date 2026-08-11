@@ -14,15 +14,20 @@ npm install
 npm start
 ```
 
-可选：在环境中设置 Cookie（公开接口被风控时，例如动态返回 412）
+### 设置 Cookie（推荐）
 
-```bash
-# PowerShell
+应用内：首页「已收藏」右侧 **设置**，粘贴浏览器 Cookie，保存后立即生效。
+
+### 动态提醒
+
+收藏卡片上的 **提醒** 开关可为单个 UP 开启桌面通知；设置页可配置总开关与检查间隔（默认约 15 分钟）。仅在应用运行期间轮询检查，退出后不再提醒。
+
+也可通过环境变量（设置页为空时作为回退）：
+
+```powershell
 $env:BILI_COOKIE="SESSDATA=...; bili_jct=..."
 npm start
 ```
-
-若动态加载遇到风控或 412，请设置 `BILI_COOKIE` 后重试。
 
 ## 测试
 
@@ -32,5 +37,6 @@ npm test
 
 ## 说明
 
-- 收藏保存在 Electron `userData/favorites.json`（不是仓库内 `data/`）。
-- 默认不登录；仅读取公开接口。
+- 收藏：`userData/favorites.json`
+- 设置（含 Cookie）：`userData/settings.json`
+- 默认不登录；公开接口受限时配置 Cookie。
