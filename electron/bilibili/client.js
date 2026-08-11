@@ -34,7 +34,7 @@ function mapBiliError(code, message) {
   };
 }
 
-function createClient({ cookie = '', delayMs = 200 } = {}) {
+function createClient({ cookie = '', delayMs = 200, timeoutMs = 15000 } = {}) {
   let chain = Promise.resolve();
 
   function enqueue(fn) {
@@ -61,15 +61,26 @@ function createClient({ cookie = '', delayMs = 200 } = {}) {
       };
       if (cookie) headers.Cookie = cookie;
 
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), timeoutMs);
       let res;
       try {
-        res = await fetch(u, { headers });
+        res = await fetch(u, { headers, signal: controller.signal });
       } catch (e) {
+        if (controller.signal.aborted) {
+          throw new BiliRequestError({
+            code: 'TIMEOUT',
+            message: '请求超时',
+            retryable: true,
+          });
+        }
         throw new BiliRequestError({
           code: 'NETWORK',
           message: `网络失败：${e.message}`,
           retryable: true,
         });
+      } finally {
+        clearTimeout(timeout);
       }
       if (!res.ok) {
         if (res.status === 412) {

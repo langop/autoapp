@@ -5,10 +5,12 @@ const state = {
   dynamics: [],
   dynOffset: null,
   dynHasMore: false,
+  dynLoading: false,
   selectedDyn: null,
   comments: [],
   cmtPage: 1,
   cmtHasMore: false,
+  cmtLoading: false,
 };
 
 function $(id) {
@@ -94,7 +96,7 @@ function renderDynamics() {
     el.onclick = () => selectDynamic(d);
     box.appendChild(el);
   }
-  $('btn-more-dyn').disabled = !state.dynHasMore;
+  $('btn-more-dyn').disabled = state.dynLoading || !state.dynHasMore;
 }
 
 function renderComments() {
@@ -110,9 +112,13 @@ function renderComments() {
     box.appendChild(el);
   }
   $('btn-more-cmt').classList.toggle('hidden', !state.cmtHasMore);
+  $('btn-more-cmt').disabled = state.cmtLoading;
 }
 
 async function loadDynamics(reset) {
+  if (state.dynLoading) return;
+  state.dynLoading = true;
+  $('btn-more-dyn').disabled = true;
   $('dyn-error').textContent = '';
   try {
     if (reset) {
@@ -134,6 +140,9 @@ async function loadDynamics(reset) {
     renderComments();
   } catch (e) {
     $('dyn-error').textContent = e.message;
+  } finally {
+    state.dynLoading = false;
+    $('btn-more-dyn').disabled = !state.dynHasMore;
   }
 }
 
@@ -156,6 +165,9 @@ async function selectDynamic(d) {
 async function loadComments(reset) {
   const d = state.selectedDyn;
   if (!d?.commentSupported) return;
+  if (state.cmtLoading) return;
+  state.cmtLoading = true;
+  $('btn-more-cmt').disabled = true;
   try {
     const page = reset ? 1 : state.cmtPage + 1;
     const res = await call(window.biliApi.getComments, {
@@ -170,6 +182,9 @@ async function loadComments(reset) {
     renderComments();
   } catch (e) {
     $('cmt-error').textContent = e.message;
+  } finally {
+    state.cmtLoading = false;
+    $('btn-more-cmt').disabled = !state.cmtHasMore;
   }
 }
 

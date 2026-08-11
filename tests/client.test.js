@@ -55,3 +55,45 @@ describe('createClient.getJson HTTP status mapping', () => {
     });
   }
 });
+
+describe('createClient.getJson timeout handling', () => {
+  it('aborts a stalled request and lets the queue advance', async () => {
+    let calls = 0;
+    const fetchMock = mock.method(globalThis, 'fetch', (_url, { signal }) => {
+      calls += 1;
+      if (calls === 1) {
+        return new Promise((resolve, reject) => {
+          signal.addEventListener(
+            'abort',
+            () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' })),
+            { once: true },
+          );
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({ code: 0, data: { ok: true } }),
+      });
+    });
+
+    try {
+      const client = createClient({ delayMs: 0, timeoutMs: 10 });
+      await assert.rejects(
+        () => client.getJson('https://api.bilibili.com/x/space/acc/info'),
+        (err) => {
+          assert.ok(err instanceof BiliRequestError);
+          assert.equal(err.code, 'TIMEOUT');
+          assert.equal(err.message, '请求超时');
+          assert.equal(err.retryable, true);
+          return true;
+        },
+      );
+      await assert.doesNotReject(() =>
+        client.getJson('https://api.bilibili.com/x/space/acc/info'),
+      );
+      assert.equal(calls, 2);
+    } finally {
+      fetchMock.mock.restore();
+    }
+  });
+});
