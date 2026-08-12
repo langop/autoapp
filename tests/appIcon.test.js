@@ -1,7 +1,10 @@
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('path');
-const { resolveAppIconPath } = require('../electron/appIcon');
+const {
+  resolveAppIconPath,
+  resolveWindowTrayIconPath,
+} = require('../electron/appIcon');
 
 describe('resolveAppIconPath', () => {
   it('returns icon.png under appPath', () => {
@@ -10,11 +13,22 @@ describe('resolveAppIconPath', () => {
       path.join('D:\\app', 'icon.png'),
     );
   });
+});
+
+describe('resolveWindowTrayIconPath', () => {
+  it('returns tuo.png under appPath', () => {
+    assert.equal(
+      resolveWindowTrayIconPath({ appPath: 'D:\\app' }),
+      path.join('D:\\app', 'tuo.png'),
+    );
+  });
 
   it('works for packaged app.asar path', () => {
     assert.equal(
-      resolveAppIconPath({ appPath: 'D:\\install\\resources\\app.asar' }),
-      path.join('D:\\install\\resources\\app.asar', 'icon.png'),
+      resolveWindowTrayIconPath({
+        appPath: 'D:\\install\\resources\\app.asar',
+      }),
+      path.join('D:\\install\\resources\\app.asar', 'tuo.png'),
     );
   });
 });

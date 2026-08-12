@@ -25,6 +25,7 @@
       "electron/**/*",
       "renderer/**/*",
       "icon.png",
+      "tuo.png",
       "package.json"
     ],
     "asar": true,
