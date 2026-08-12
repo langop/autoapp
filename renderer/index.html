@@ -86,6 +86,15 @@
           <label class="field-label" for="notify-interval">检查间隔（分钟）</label>
           <input id="notify-interval" type="number" min="5" max="60" step="1" value="15" />
         </div>
+        <div class="settings-section">
+          <h3 class="section-title">窗口关闭</h3>
+          <label class="field-label" for="close-action">关闭窗口时</label>
+          <select id="close-action">
+            <option value="ask">每次询问</option>
+            <option value="tray">最小化到托盘</option>
+            <option value="quit">退出应用</option>
+          </select>
+        </div>
         <div class="row actions">
           <button id="btn-save-settings" class="primary flex-1" type="button">保存</button>
           <button id="btn-clear-cookie" class="flex-1" type="button">清除</button>
@@ -116,6 +125,11 @@
       <img id="lb-img" alt="" />
       <button id="lb-next" class="lb-nav next" type="button" aria-label="下一张">›</button>
       <div id="lb-counter" class="lb-counter"></div>
+    </div>
+
+    <div id="notify-toast" class="notify-toast hidden" role="status" aria-live="polite">
+      <div id="notify-toast-title" class="notify-toast-title"></div>
+      <div id="notify-toast-body" class="notify-toast-body"></div>
     </div>
 
     <script src="app.js"></script>

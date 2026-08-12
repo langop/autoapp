@@ -23,4 +23,9 @@ contextBridge.exposeInMainWorld('biliApi', {
     ipcRenderer.on('open-favorite-dynamics', listener);
     return () => ipcRenderer.removeListener('open-favorite-dynamics', listener);
   },
+  onFavoriteDynamicNotify: (callback) => {
+    const listener = (_e, payload) => callback(payload);
+    ipcRenderer.on('favorite-dynamic-notify', listener);
+    return () => ipcRenderer.removeListener('favorite-dynamic-notify', listener);
+  },
 });

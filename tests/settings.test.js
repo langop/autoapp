@@ -25,6 +25,7 @@ describe('settings store', () => {
       cookie: '',
       notifyEnabled: true,
       notifyIntervalMin: 15,
+      closeAction: 'ask',
     });
   });
 
@@ -39,6 +40,7 @@ describe('settings store', () => {
       cookie: '',
       notifyEnabled: true,
       notifyIntervalMin: 15,
+      closeAction: 'ask',
     });
   });
 
@@ -49,6 +51,7 @@ describe('settings store', () => {
       cookie: 'b=2',
       notifyEnabled: false,
       notifyIntervalMin: 30,
+      closeAction: 'ask',
     });
   });
 
@@ -56,5 +59,22 @@ describe('settings store', () => {
     assert.equal(store.save({ notifyIntervalMin: 3 }).notifyIntervalMin, 5);
     assert.equal(store.save({ notifyIntervalMin: 99 }).notifyIntervalMin, 60);
     assert.equal(store.save({ notifyIntervalMin: 20 }).notifyIntervalMin, 20);
+  });
+
+  it('defaults closeAction to ask', () => {
+    assert.equal(store.get().closeAction, 'ask');
+  });
+
+  it('saves closeAction and rejects invalid values', () => {
+    assert.equal(store.save({ closeAction: 'tray' }).closeAction, 'tray');
+    assert.equal(store.save({ closeAction: 'quit' }).closeAction, 'quit');
+    assert.equal(store.save({ closeAction: 'nope' }).closeAction, 'ask');
+  });
+
+  it('merges closeAction on partial save', () => {
+    store.save({ closeAction: 'tray' });
+    store.save({ cookie: 'x=1' });
+    assert.equal(store.get().closeAction, 'tray');
+    assert.equal(store.get().cookie, 'x=1');
   });
 });

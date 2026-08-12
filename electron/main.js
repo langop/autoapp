@@ -8,8 +8,11 @@ const {
   net,
   shell,
   Notification,
+  dialog,
 } = require('electron');
 const path = require('path');
+const { resolveCloseDecision } = require('./tray/closeDecision');
+const { createAppTray, showMainWindow } = require('./tray/appTray');
 const { createFavoritesStore } = require('./store/favorites');
 const { createSettingsStore } = require('./store/settings');
 const { createWatchStore } = require('./store/watch');
@@ -19,6 +22,10 @@ const { fetchDynamics } = require('./bilibili/dynamics');
 const { fetchComments } = require('./bilibili/comments');
 const { createScheduler } = require('./notify/scheduler');
 const { runWatchRound } = require('./notify/watcher');
+const {
+  resolveAppUserModelId,
+  ensureWindowsNotifyShortcut,
+} = require('./notify/windowsNotify');
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -47,9 +54,45 @@ const client = createClient({
 });
 
 let mainWindow = null;
+let appTray = null;
+let isQuitting = false;
+let closeDialogOpen = false;
 const activeNotifications = new Set();
 
+function hideToTrayOrQuit() {
+  if (!appTray) {
+    isQuitting = true;
+    app.quit();
+    return;
+  }
+  mainWindow.hide();
+}
+
+function quitApp() {
+  isQuitting = true;
+  if (appTray) {
+    appTray.destroy();
+    appTray = null;
+  }
+  app.quit();
+}
+
+function openFromTray() {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    createWindow();
+  } else {
+    showMainWindow(mainWindow);
+  }
+}
+
+function showInAppNotify(payload) {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  mainWindow.webContents.send('favorite-dynamic-notify', payload);
+}
+
 function showDesktopNotify(payload) {
+  // Always mirror in-app so a missed Windows toast is still visible.
+  showInAppNotify(payload);
   if (!Notification.isSupported()) return;
   const n = new Notification({ title: payload.title, body: payload.body });
   activeNotifications.add(n);
@@ -57,13 +100,15 @@ function showDesktopNotify(payload) {
   n.on('click', () => {
     release();
     if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore();
-      mainWindow.focus();
+      showMainWindow(mainWindow);
       mainWindow.webContents.send('open-favorite-dynamics', { uid: payload.uid });
     }
   });
   n.on('close', release);
-  n.on('failed', release);
+  n.on('failed', (event, error) => {
+    release();
+    console.error('[notify] desktop notification failed', error || event);
+  });
   n.show();
 }
 
@@ -163,6 +208,51 @@ function createWindow() {
     },
   });
   mainWindow.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
+  mainWindow.on('close', async (event) => {
+    const decision = resolveCloseDecision({
+      closeAction: settings.get().closeAction,
+      isQuitting,
+    });
+    if (decision === 'allow-quit') {
+      if (isQuitting) return;
+      event.preventDefault();
+      quitApp();
+      return;
+    }
+    event.preventDefault();
+    if (decision === 'hide') {
+      hideToTrayOrQuit();
+      return;
+    }
+    // ask
+    if (closeDialogOpen) return;
+    closeDialogOpen = true;
+    try {
+      const { response, checkboxChecked } = await dialog.showMessageBox(mainWindow, {
+        type: 'question',
+        title: '关闭窗口',
+        message: '关闭窗口后是否继续在后台接收动态提醒？',
+        checkboxLabel: '记住我的选择',
+        checkboxChecked: false,
+        buttons: ['最小化到托盘', '退出应用', '取消'],
+        defaultId: 0,
+        cancelId: 2,
+        noLink: true,
+      });
+      if (response === 2) return; // 取消
+      if (response === 0) {
+        if (checkboxChecked) settings.save({ closeAction: 'tray' });
+        hideToTrayOrQuit();
+        return;
+      }
+      if (response === 1) {
+        if (checkboxChecked) settings.save({ closeAction: 'quit' });
+        quitApp();
+      }
+    } finally {
+      closeDialogOpen = false;
+    }
+  });
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
@@ -178,13 +268,17 @@ app.on('web-contents-created', (_event, contents) => {
 });
 
 if (process.platform === 'win32') {
-  app.setAppUserModelId('com.bili.up.viewer');
+  app.setAppUserModelId(resolveAppUserModelId());
 }
 
 app.whenReady().then(() => {
   setupMediaProtocol();
   setupImageHeaders();
   Menu.setApplicationMenu(null);
+  const shortcut = ensureWindowsNotifyShortcut({ app, shell });
+  if (!shortcut.ok) {
+    console.error('[notify] start menu shortcut setup failed', shortcut.reason);
+  }
 
   ipcMain.handle('getUserInfo', wrap(async (_e, uid) => fetchUserInfo(client, uid)));
   ipcMain.handle('listFavorites', wrap(async () => favorites.list()));
@@ -201,7 +295,13 @@ app.whenReady().then(() => {
   );
   ipcMain.handle(
     'setFavoriteNotify',
-    wrap(async (_e, { uid, enabled }) => favorites.setNotify(uid, enabled)),
+    wrap(async (_e, { uid, enabled }) => {
+      const list = favorites.setNotify(uid, enabled);
+      // Baseline immediately on enable so posts before the next interval
+      // are not swallowed as a silent "init" cursor write.
+      if (enabled) await runNotifyWatchRound();
+      return list;
+    }),
   );
   ipcMain.handle(
     'reorderFavorites',
@@ -249,15 +349,22 @@ app.whenReady().then(() => {
   );
 
   createWindow();
+  appTray = createAppTray({
+    onOpen: openFromTray,
+    onQuit: quitApp,
+  });
   scheduler.start();
 });
 
 app.on('before-quit', () => {
+  isQuitting = true;
   scheduler.stop();
 });
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
+  if (process.platform === 'darwin') return;
+  if (isQuitting) app.quit();
+  // 隐藏到托盘时不 quit
 });
 
 app.on('activate', () => {

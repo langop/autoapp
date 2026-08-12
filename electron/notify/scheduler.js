@@ -1,32 +1,47 @@
 function createScheduler({ getIntervalMs, onTick, onRestart }) {
   let timer = null;
   let active = false;
+  let tickGeneration = 0;
 
-  function scheduleNext() {
-    if (!active) return;
-    timer = setTimeout(async () => {
-      if (!active) return;
-      try {
-        await onTick();
-      } catch {
-        // skip tick errors
-      }
-      scheduleNext();
+  function clearTimer() {
+    if (timer != null) {
+      clearTimeout(timer);
+      timer = null;
+    }
+  }
+
+  async function runTick(generation) {
+    if (!active || generation !== tickGeneration) return;
+    try {
+      await onTick();
+    } catch {
+      // skip tick errors
+    }
+    if (!active || generation !== tickGeneration) return;
+    scheduleNext(generation);
+  }
+
+  function scheduleNext(generation) {
+    if (!active || generation !== tickGeneration) return;
+    clearTimer();
+    timer = setTimeout(() => {
+      timer = null;
+      runTick(generation);
     }, getIntervalMs());
   }
 
   function start() {
     if (active) return;
     active = true;
-    scheduleNext();
+    const generation = ++tickGeneration;
+    // First check immediately, then wait for the interval.
+    runTick(generation);
   }
 
   function stop() {
     active = false;
-    if (timer != null) {
-      clearTimeout(timer);
-      timer = null;
-    }
+    tickGeneration += 1;
+    clearTimer();
   }
 
   function restart() {

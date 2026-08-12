@@ -5,7 +5,7 @@
   "main": "electron/main.js",
   "scripts": {
     "start": "electron .",
-    "test": "node --test tests/favorites.test.js tests/settings.test.js tests/watch.test.js tests/watcher.test.js tests/client.test.js tests/user.test.js tests/dynamics.test.js tests/comments.test.js"
+    "test": "node --test tests/favorites.test.js tests/settings.test.js tests/watch.test.js tests/watcher.test.js tests/scheduler.test.js tests/windowsNotify.test.js tests/client.test.js tests/user.test.js tests/dynamics.test.js tests/comments.test.js tests/closeDecision.test.js"
   },
   "devDependencies": {
     "electron": "^33.2.0"

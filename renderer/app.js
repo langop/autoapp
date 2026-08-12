@@ -374,6 +374,22 @@ async function openFavoriteDynamics(uid) {
   }
 }
 
+let notifyToastTimer = null;
+let notifyToastUid = '';
+
+function showNotifyToast(payload) {
+  const el = $('notify-toast');
+  notifyToastUid = String(payload?.uid || '');
+  $('notify-toast-title').textContent = payload?.title || '动态更新';
+  $('notify-toast-body').textContent = payload?.body || '';
+  el.classList.remove('hidden');
+  if (notifyToastTimer) clearTimeout(notifyToastTimer);
+  notifyToastTimer = setTimeout(() => {
+    el.classList.add('hidden');
+    notifyToastTimer = null;
+  }, 8000);
+}
+
 function updateDynamicsBackLabel() {
   $('btn-back-profile').textContent =
     state.dynamicsBackView === 'home' ? '← 首页' : '← 资料';
@@ -972,6 +988,7 @@ async function openSettings() {
     $('cookie-input').value = s.cookie || '';
     $('notify-enabled').checked = s.notifyEnabled !== false;
     $('notify-interval').value = s.notifyIntervalMin ?? 15;
+    $('close-action').value = s.closeAction || 'ask';
   } catch (e) {
     $('cookie-input').value = '';
     $('settings-error').textContent = e.message;
@@ -987,6 +1004,7 @@ async function saveSettings() {
       cookie: $('cookie-input').value,
       notifyEnabled: $('notify-enabled').checked,
       notifyIntervalMin: Number($('notify-interval').value),
+      closeAction: $('close-action').value,
     });
     $('settings-msg').textContent = '已保存，立即生效（无需重启）';
   } catch (e) {
@@ -1061,6 +1079,13 @@ function bind() {
   window.biliApi.onOpenFavoriteDynamics(({ uid }) => {
     if (uid) openFavoriteDynamics(uid);
   });
+  window.biliApi.onFavoriteDynamicNotify((payload) => {
+    showNotifyToast(payload);
+  });
+  $('notify-toast').onclick = () => {
+    $('notify-toast').classList.add('hidden');
+    if (notifyToastUid) openFavoriteDynamics(notifyToastUid);
+  };
 
   $('lb-close').onclick = () => closeLightbox();
   $('lb-prev').onclick = () => stepLightbox(-1);

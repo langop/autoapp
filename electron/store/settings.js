@@ -1,10 +1,17 @@
 const fs = require('fs');
 const path = require('path');
 
+const CLOSE_ACTIONS = new Set(['ask', 'tray', 'quit']);
+
+function normalizeCloseAction(value) {
+  return CLOSE_ACTIONS.has(value) ? value : 'ask';
+}
+
 const DEFAULTS = {
   cookie: '',
   notifyEnabled: true,
   notifyIntervalMin: 15,
+  closeAction: 'ask',
 };
 
 function clampInterval(value) {
@@ -37,6 +44,7 @@ function createSettingsStore(filePath) {
             ? data.notifyIntervalMin
             : DEFAULTS.notifyIntervalMin,
         ),
+        closeAction: normalizeCloseAction(data.closeAction),
       };
     } catch {
       return { ...DEFAULTS };
@@ -65,6 +73,9 @@ function createSettingsStore(filePath) {
           partial?.notifyIntervalMin != null
             ? Number(partial.notifyIntervalMin)
             : prev.notifyIntervalMin,
+        ),
+        closeAction: normalizeCloseAction(
+          partial?.closeAction != null ? partial.closeAction : prev.closeAction,
         ),
       };
       write(next);
