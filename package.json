@@ -8,7 +8,7 @@
     "icons": "node scripts/generate-icons.js",
     "pack": "npm run icons && electron-builder --dir",
     "dist": "npm run icons && electron-builder --win nsis",
-    "test": "node --test tests/favorites.test.js tests/settings.test.js tests/watch.test.js tests/watcher.test.js tests/scheduler.test.js tests/windowsNotify.test.js tests/client.test.js tests/user.test.js tests/dynamics.test.js tests/comments.test.js tests/closeDecision.test.js tests/userData.test.js tests/appIcon.test.js tests/packageBuild.test.js"
+    "test": "node --test tests/favorites.test.js tests/settings.test.js tests/watch.test.js tests/watcher.test.js tests/scheduler.test.js tests/windowsNotify.test.js tests/client.test.js tests/user.test.js tests/dynamics.test.js tests/comments.test.js tests/closeDecision.test.js tests/userData.test.js tests/appIcon.test.js tests/packageBuild.test.js tests/tuoIconProcess.test.js"
   },
   "devDependencies": {
     "electron": "^33.2.0",
@@ -25,7 +25,6 @@
       "electron/**/*",
       "renderer/**/*",
       "icon.png",
-      "tuo.png",
       "package.json"
     ],
     "asar": true,

@@ -122,8 +122,17 @@
     <div id="lightbox" class="lightbox hidden" aria-hidden="true">
       <button id="lb-close" class="lb-close" type="button" aria-label="关闭">×</button>
       <button id="lb-prev" class="lb-nav prev" type="button" aria-label="上一张">‹</button>
-      <img id="lb-img" alt="" />
+      <div id="lb-stage" class="lb-stage">
+        <img id="lb-img" alt="" draggable="false" />
+      </div>
       <button id="lb-next" class="lb-nav next" type="button" aria-label="下一张">›</button>
+      <div class="lb-toolbar">
+        <button id="lb-zoom-out" type="button" aria-label="缩小">−</button>
+        <button id="lb-zoom-reset" type="button" aria-label="重置缩放">
+          <span id="lb-zoom-label">100%</span>
+        </button>
+        <button id="lb-zoom-in" type="button" aria-label="放大">+</button>
+      </div>
       <div id="lb-counter" class="lb-counter"></div>
     </div>
 

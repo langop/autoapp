@@ -17,6 +17,15 @@ const state = {
     open: false,
     urls: [],
     index: 0,
+    scale: 1,
+    panX: 0,
+    panY: 0,
+    dragging: false,
+    dragStartX: 0,
+    dragStartY: 0,
+    panStartX: 0,
+    panStartY: 0,
+    suppressClose: false,
   },
   playerReturnView: 'dynamics',
   dynamicsBackView: 'profile',
@@ -442,6 +451,60 @@ function dynImageGallery(d) {
   return d.cover ? [d.cover] : [];
 }
 
+const LB_SCALE_MIN = 1;
+const LB_SCALE_MAX = 5;
+const LB_SCALE_STEP = 0.25;
+
+function clampLightboxScale(scale) {
+  return Math.min(LB_SCALE_MAX, Math.max(LB_SCALE_MIN, scale));
+}
+
+function resetLightboxTransform() {
+  const lb = state.lightbox;
+  lb.scale = 1;
+  lb.panX = 0;
+  lb.panY = 0;
+  lb.dragging = false;
+  lb.suppressClose = false;
+}
+
+function applyLightboxTransform() {
+  const lb = state.lightbox;
+  const img = $('lb-img');
+  const stage = $('lb-stage');
+  img.style.transform = `translate(${lb.panX}px, ${lb.panY}px) scale(${lb.scale})`;
+  stage.classList.toggle('is-zoomed', lb.scale > 1.01);
+  $('lb-zoom-label').textContent = `${Math.round(lb.scale * 100)}%`;
+  $('lb-zoom-out').disabled = lb.scale <= LB_SCALE_MIN + 0.001;
+  $('lb-zoom-in').disabled = lb.scale >= LB_SCALE_MAX - 0.001;
+  $('lb-zoom-reset').disabled = lb.scale <= LB_SCALE_MIN + 0.001;
+}
+
+function setLightboxScale(nextScale, anchorX, anchorY) {
+  const lb = state.lightbox;
+  const prev = lb.scale;
+  const scale = clampLightboxScale(nextScale);
+  if (Math.abs(scale - prev) < 0.001) {
+    applyLightboxTransform();
+    return;
+  }
+  if (scale <= LB_SCALE_MIN) {
+    lb.scale = 1;
+    lb.panX = 0;
+    lb.panY = 0;
+  } else if (anchorX != null && anchorY != null) {
+    const stage = $('lb-stage').getBoundingClientRect();
+    const cx = anchorX - (stage.left + stage.width / 2);
+    const cy = anchorY - (stage.top + stage.height / 2);
+    lb.panX = cx - ((cx - lb.panX) * scale) / prev;
+    lb.panY = cy - ((cy - lb.panY) * scale) / prev;
+    lb.scale = scale;
+  } else {
+    lb.scale = scale;
+  }
+  applyLightboxTransform();
+}
+
 function renderLightbox() {
   const lb = state.lightbox;
   const root = $('lightbox');
@@ -456,16 +519,16 @@ function renderLightbox() {
   $('lb-counter').textContent = `${lb.index + 1} / ${lb.urls.length}`;
   $('lb-prev').disabled = lb.urls.length <= 1;
   $('lb-next').disabled = lb.urls.length <= 1;
+  applyLightboxTransform();
 }
 
 function openLightbox(urls, index = 0) {
   const list = (urls || []).filter(Boolean);
   if (!list.length) return;
-  state.lightbox = {
-    open: true,
-    urls: list,
-    index: Math.max(0, Math.min(index, list.length - 1)),
-  };
+  state.lightbox.open = true;
+  state.lightbox.urls = list;
+  state.lightbox.index = Math.max(0, Math.min(index, list.length - 1));
+  resetLightboxTransform();
   renderLightbox();
 }
 
@@ -473,7 +536,9 @@ function closeLightbox() {
   state.lightbox.open = false;
   state.lightbox.urls = [];
   state.lightbox.index = 0;
+  resetLightboxTransform();
   $('lb-img').removeAttribute('src');
+  applyLightboxTransform();
   renderLightbox();
 }
 
@@ -481,6 +546,7 @@ function stepLightbox(delta) {
   const lb = state.lightbox;
   if (!lb.open || lb.urls.length <= 1) return;
   lb.index = (lb.index + delta + lb.urls.length) % lb.urls.length;
+  resetLightboxTransform();
   renderLightbox();
 }
 
@@ -1090,14 +1156,103 @@ function bind() {
   $('lb-close').onclick = () => closeLightbox();
   $('lb-prev').onclick = () => stepLightbox(-1);
   $('lb-next').onclick = () => stepLightbox(1);
+  $('lb-zoom-in').onclick = (e) => {
+    e.stopPropagation();
+    setLightboxScale(state.lightbox.scale + LB_SCALE_STEP);
+  };
+  $('lb-zoom-out').onclick = (e) => {
+    e.stopPropagation();
+    setLightboxScale(state.lightbox.scale - LB_SCALE_STEP);
+  };
+  $('lb-zoom-reset').onclick = (e) => {
+    e.stopPropagation();
+    setLightboxScale(1);
+  };
   $('lightbox').addEventListener('click', (e) => {
-    if (e.target === $('lightbox') || e.target === $('lb-img')) closeLightbox();
+    const lb = state.lightbox;
+    if (lb.suppressClose) {
+      lb.suppressClose = false;
+      return;
+    }
+    // Zoomed: stage/img are for panning — only true backdrop closes.
+    if (lb.scale > 1.01) {
+      if (e.target === $('lightbox')) closeLightbox();
+      return;
+    }
+    if (e.target === $('lightbox') || e.target === $('lb-stage')) closeLightbox();
+  });
+  const stage = $('lb-stage');
+  const img = $('lb-img');
+  stage.addEventListener(
+    'wheel',
+    (e) => {
+      if (!state.lightbox.open) return;
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? -LB_SCALE_STEP : LB_SCALE_STEP;
+      setLightboxScale(state.lightbox.scale + delta, e.clientX, e.clientY);
+    },
+    { passive: false },
+  );
+  img.addEventListener('dblclick', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (state.lightbox.scale > 1.01) setLightboxScale(1);
+    else setLightboxScale(2.5, e.clientX, e.clientY);
+  });
+  const onPointerDown = (e) => {
+    if (!state.lightbox.open || state.lightbox.scale <= 1.01) return;
+    if (e.button != null && e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const lb = state.lightbox;
+    lb.dragging = true;
+    lb.suppressClose = false;
+    lb.dragStartX = e.clientX;
+    lb.dragStartY = e.clientY;
+    lb.panStartX = lb.panX;
+    lb.panStartY = lb.panY;
+    stage.classList.add('is-dragging');
+    stage.setPointerCapture?.(e.pointerId);
+  };
+  const onPointerMove = (e) => {
+    const lb = state.lightbox;
+    if (!lb.dragging) return;
+    const dx = e.clientX - lb.dragStartX;
+    const dy = e.clientY - lb.dragStartY;
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) lb.suppressClose = true;
+    lb.panX = lb.panStartX + dx;
+    lb.panY = lb.panStartY + dy;
+    applyLightboxTransform();
+  };
+  const onPointerUp = (e) => {
+    const lb = state.lightbox;
+    if (!lb.dragging) return;
+    lb.dragging = false;
+    stage.classList.remove('is-dragging');
+    try {
+      stage.releasePointerCapture?.(e.pointerId);
+    } catch {
+      // ignore
+    }
+  };
+  stage.addEventListener('pointerdown', onPointerDown);
+  stage.addEventListener('pointermove', onPointerMove);
+  stage.addEventListener('pointerup', onPointerUp);
+  stage.addEventListener('pointercancel', onPointerUp);
+  img.addEventListener('click', (e) => {
+    // Prevent residual click-after-drag from bubbling to backdrop logic.
+    if (state.lightbox.scale > 1.01 || state.lightbox.suppressClose) {
+      e.stopPropagation();
+    }
   });
   document.addEventListener('keydown', (e) => {
     if (!state.lightbox.open) return;
     if (e.key === 'Escape') closeLightbox();
     if (e.key === 'ArrowLeft') stepLightbox(-1);
     if (e.key === 'ArrowRight') stepLightbox(1);
+    if (e.key === '+' || e.key === '=') setLightboxScale(state.lightbox.scale + LB_SCALE_STEP);
+    if (e.key === '-' || e.key === '_') setLightboxScale(state.lightbox.scale - LB_SCALE_STEP);
+    if (e.key === '0') setLightboxScale(1);
   });
 }
 

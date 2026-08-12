@@ -30,7 +30,10 @@ const {
   configureIsolatedUserData,
   resolveInitialCookie,
 } = require('./paths/userData');
-const { resolveWindowTrayIconPath } = require('./appIcon');
+const {
+  resolveWindowIconPath,
+  resolveTrayIconPath,
+} = require('./appIcon');
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -204,7 +207,7 @@ function setupImageHeaders() {
 }
 
 function createWindow() {
-  const iconPath = resolveWindowTrayIconPath({ appPath: app.getAppPath() });
+  const iconPath = resolveWindowIconPath();
   mainWindow = new BrowserWindow({
     width: 390,
     height: 633,
@@ -367,12 +370,11 @@ app.whenReady().then(() => {
     }),
   );
 
-  const iconPath = resolveWindowTrayIconPath({ appPath: app.getAppPath() });
   createWindow();
   appTray = createAppTray({
     onOpen: openFromTray,
     onQuit: quitApp,
-    iconPath,
+    iconPath: resolveTrayIconPath(),
   });
   scheduler.start();
 });

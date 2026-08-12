@@ -3,18 +3,12 @@ const assert = require('node:assert/strict');
 const pkg = require('../package.json');
 
 describe('electron-builder files whitelist', () => {
-  it('only ships app code and icon assets', () => {
+  it('only ships app code and brand icon.png', () => {
     const files = pkg.build.files;
     assert.ok(Array.isArray(files));
     assert.deepEqual(
       [...files].sort(),
-      [
-        'electron/**/*',
-        'icon.png',
-        'package.json',
-        'renderer/**/*',
-        'tuo.png',
-      ].sort(),
+      ['electron/**/*', 'icon.png', 'package.json', 'renderer/**/*'].sort(),
     );
     const joined = files.join('\n');
     assert.equal(joined.includes('favorites.json'), false);
