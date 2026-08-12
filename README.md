@@ -4,6 +4,16 @@ Electron 桌面工具：查询 B 站 UP 主资料、本地收藏，并按需浏�
 
 当前版本 `0.1.0`，主要面向 **Windows**（托盘、通知、NSIS 安装包）。
 
+## 界面示例
+
+### 收藏列表
+
+![收藏列表](https://github.com/langop/autoapp/raw/main/eg1.png)
+
+### 动态时间线
+
+![动态时间线](https://github.com/langop/autoapp/raw/main/eg2.png)
+
 ## 功能
 
 ### 查询与资料
