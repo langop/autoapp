@@ -206,11 +206,14 @@ function setupImageHeaders() {
   );
 }
 
+const WINDOW_WIDTH = 300;
+const WINDOW_HEIGHT = 500;
+
 function createWindow() {
   const iconPath = resolveWindowIconPath();
   mainWindow = new BrowserWindow({
-    width: 390,
-    height: 633,
+    width: WINDOW_WIDTH,
+    height: WINDOW_HEIGHT,
     useContentSize: true,
     resizable: false,
     maximizable: false,

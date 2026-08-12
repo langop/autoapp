@@ -27,6 +27,8 @@ const state = {
     panStartY: 0,
     suppressClose: false,
   },
+  pinnedExpanded: false,
+  cmtSourceExpanded: false,
   playerReturnView: 'dynamics',
   dynamicsBackView: 'profile',
 };
@@ -65,17 +67,84 @@ function scrollDynamicsToTop() {
   if (list) list.scrollTop = 0;
 }
 
+function shouldShowDynTypeLabel(label) {
+  const text = String(label || '').trim();
+  if (!text) return false;
+  return text !== '图文' && text !== '视频';
+}
+
+function dynTypeBadgeHtml(d) {
+  if (!shouldShowDynTypeLabel(d?.label)) return '';
+  return `<span class="dyn-badge">${escapeHtml(d.label)}</span>`;
+}
+
+function dynSourceLabelHtml(d) {
+  if (!shouldShowDynTypeLabel(d?.label)) return '';
+  return `<span class="label">${escapeHtml(d.label)}</span>`;
+}
+
 function renderCommentSource(d) {
   const source = $('cmt-source');
   if (!d) {
     source.innerHTML = '';
+    source.classList.remove('is-collapsed', 'is-expanded');
     return;
   }
-  const preview = d.title || (d.text ? d.text.slice(0, 80) : '（无正文）');
+  const expanded = Boolean(state.cmtSourceExpanded);
+  const title = String(d.title || '').replace(/^\s+/, '');
+  const text = String(d.text || '').replace(/^\s+/, '');
+  const preview =
+    title ||
+    (text ? text.replace(/\s+/g, ' ').trim() : '') ||
+    '（无正文）';
+  const titleHtml = title
+    ? `<div class="cmt-source-title">${escapeHtml(title)}</div>`
+    : '';
+  const textHtml = text
+    ? `<div class="cmt-source-text">${escapeHtml(text)}</div>`
+    : '';
+  const emptyHtml =
+    !title && !text ? '<div class="cmt-source-text">（无正文）</div>' : '';
+  source.classList.toggle('is-collapsed', !expanded);
+  source.classList.toggle('is-expanded', expanded);
   source.innerHTML = `
-    <span class="label">${escapeHtml(d.label || '动态')}</span>
-    ${escapeHtml(preview)}
+    <button type="button" class="cmt-source-toggle" aria-expanded="${expanded ? 'true' : 'false'}">
+      <span class="cmt-source-toggle-main">
+        ${dynSourceLabelHtml(d)}
+        <span class="cmt-source-preview">${escapeHtml(preview)}</span>
+      </span>
+      <span class="cmt-source-chevron" aria-hidden="true">${expanded ? '▾' : '▸'}</span>
+    </button>
+    <div class="cmt-source-body">
+      ${titleHtml}${textHtml}${emptyHtml}
+    </div>
   `;
+  source.querySelector('.cmt-source-toggle').addEventListener('click', () => {
+    state.cmtSourceExpanded = !state.cmtSourceExpanded;
+    renderCommentSource(d);
+  });
+}
+
+const FAB_NEAR_BOTTOM_PX = 140;
+
+function isScrollNearBottom(el) {
+  if (!el) return false;
+  const remaining = el.scrollHeight - el.scrollTop - el.clientHeight;
+  return remaining <= FAB_NEAR_BOTTOM_PX;
+}
+
+function updateLoadMoreFab(listId, btnId, { hasMore, loading }) {
+  const btn = $(btnId);
+  const list = $(listId);
+  if (!btn) return;
+  if (!hasMore) {
+    btn.classList.add('hidden');
+    btn.disabled = true;
+    return;
+  }
+  const show = isScrollNearBottom(list);
+  btn.classList.toggle('hidden', !show);
+  btn.disabled = Boolean(loading);
 }
 
 function fmtTime(ts) {
@@ -208,14 +277,16 @@ async function refreshFavorites() {
     el.dataset.uid = String(fav.uid);
     el.draggable = true;
     el.innerHTML = `
-      <img class="fav-avatar" draggable="false" src="${escapeHtml(toDisplayUrl(fav.avatar || ''))}" alt="" />
-      <div class="fav-body">
+      <div class="fav-row fav-row-main">
+        <img class="fav-avatar" draggable="false" src="${escapeHtml(toDisplayUrl(fav.avatar || ''))}" alt="" />
         <div class="fav-name">${escapeHtml(fav.name || '未知 UP')}</div>
-        <div class="muted fav-uid">UID ${escapeHtml(fav.uid)}</div>
       </div>
-      <div class="fav-actions">
-        <button class="fav-notify${fav.notifyEnabled ? ' active' : ''}" type="button">提醒</button>
-        <button class="fav-unfav" type="button">取消收藏</button>
+      <div class="fav-row fav-row-meta">
+        <div class="muted fav-uid">UID ${escapeHtml(fav.uid)}</div>
+        <div class="fav-actions">
+          <button class="fav-notify${fav.notifyEnabled ? ' active' : ''}" type="button">提醒</button>
+          <button class="fav-unfav" type="button">移除</button>
+        </div>
       </div>
     `;
     const avatar = el.querySelector('.fav-avatar');
@@ -711,13 +782,14 @@ function createDynCard(d, { pinned = false } = {}) {
   const textHtml = d.text
     ? `<div class="dyn-text">${escapeHtml(d.text)}</div>`
     : '';
+  const typeBadge = dynTypeBadgeHtml(d);
   const goLabel = d.commentSupported ? '查看评论 →' : '暂无评论入口';
   if (pinned) {
     el.innerHTML = `
       <div class="dyn-main">
         <div class="dyn-top">
           <span class="dyn-badge pin">置顶</span>
-          <span class="dyn-badge">${escapeHtml(d.label || '动态')}</span>
+          ${typeBadge}
           <span class="dyn-fulltime">${escapeHtml(fmtFullDateTime(d.publishTime))}</span>
         </div>
         ${titleHtml}
@@ -736,9 +808,7 @@ function createDynCard(d, { pinned = false } = {}) {
         <span class="dyn-time-dot"></span>
       </div>
       <div class="dyn-main">
-        <div class="dyn-top">
-          <span class="dyn-badge">${escapeHtml(d.label || '动态')}</span>
-        </div>
+        ${typeBadge ? `<div class="dyn-top">${typeBadge}</div>` : ''}
         ${titleHtml}
         ${textHtml}
         ${renderDynMedia(d)}
@@ -758,16 +828,47 @@ function appendDynSection(box, { className, label, count, items, pinned = false 
   if (!items.length) return;
   const section = document.createElement('section');
   section.className = className;
-  section.innerHTML = `
-    <div class="dyn-day-head">
-      <span class="dyn-day-label">${escapeHtml(label)}</span>
-      <span class="dyn-day-count">${count} 条</span>
-    </div>
-  `;
-  const list = document.createElement('div');
-  list.className = pinned ? 'dyn-day-list pinned-list' : 'dyn-day-list';
-  for (const d of items) list.appendChild(createDynCard(d, { pinned }));
-  section.appendChild(list);
+  if (pinned) {
+    const expanded = Boolean(state.pinnedExpanded);
+    section.classList.toggle('is-collapsed', !expanded);
+    section.innerHTML = `
+      <button type="button" class="dyn-day-head dyn-pinned-toggle" aria-expanded="${expanded ? 'true' : 'false'}">
+        <span class="dyn-day-label">${escapeHtml(label)}</span>
+        <span class="dyn-pinned-meta">
+          <span class="dyn-day-count">${count} 条</span>
+          <span class="dyn-pinned-chevron" aria-hidden="true">${expanded ? '▾' : '▸'}</span>
+        </span>
+      </button>
+    `;
+    const list = document.createElement('div');
+    list.className = 'dyn-day-list pinned-list';
+    for (const d of items) list.appendChild(createDynCard(d, { pinned }));
+    section.appendChild(list);
+    section.querySelector('.dyn-pinned-toggle').addEventListener('click', (e) => {
+      e.stopPropagation();
+      state.pinnedExpanded = !state.pinnedExpanded;
+      const open = state.pinnedExpanded;
+      section.classList.toggle('is-collapsed', !open);
+      e.currentTarget.setAttribute('aria-expanded', open ? 'true' : 'false');
+      const chevron = section.querySelector('.dyn-pinned-chevron');
+      if (chevron) chevron.textContent = open ? '▾' : '▸';
+      updateLoadMoreFab('dyn-list', 'btn-more-dyn', {
+        hasMore: state.dynHasMore,
+        loading: state.dynLoading,
+      });
+    });
+  } else {
+    section.innerHTML = `
+      <div class="dyn-day-head">
+        <span class="dyn-day-label">${escapeHtml(label)}</span>
+        <span class="dyn-day-count">${count} 条</span>
+      </div>
+    `;
+    const list = document.createElement('div');
+    list.className = 'dyn-day-list';
+    for (const d of items) list.appendChild(createDynCard(d, { pinned }));
+    section.appendChild(list);
+  }
   box.appendChild(section);
 }
 
@@ -801,8 +902,10 @@ function renderDynamics() {
     });
   }
 
-  $('btn-more-dyn').classList.toggle('hidden', !state.dynHasMore);
-  $('btn-more-dyn').disabled = state.dynLoading || !state.dynHasMore;
+  updateLoadMoreFab('dyn-list', 'btn-more-dyn', {
+    hasMore: state.dynHasMore,
+    loading: state.dynLoading,
+  });
   $('btn-refresh-dyn').disabled = state.dynLoading;
 }
 
@@ -947,8 +1050,10 @@ function renderComments() {
   });
   bindCommentMedia(box);
   updateCommentSortButtons();
-  $('btn-more-cmt').classList.toggle('hidden', !state.cmtHasMore);
-  $('btn-more-cmt').disabled = state.cmtLoading;
+  updateLoadMoreFab('cmt-list', 'btn-more-cmt', {
+    hasMore: state.cmtHasMore,
+    loading: state.cmtLoading,
+  });
 }
 
 async function loadDynamics(reset) {
@@ -964,6 +1069,7 @@ async function loadDynamics(reset) {
       state.selectedDyn = null;
       state.comments = [];
       state.cmtHasMore = false;
+      state.pinnedExpanded = false;
       renderCommentSource(null);
       $('cmt-hint').textContent = '';
       renderComments();
@@ -983,8 +1089,10 @@ async function loadDynamics(reset) {
     if (reset) scrollDynamicsToTop();
   } finally {
     state.dynLoading = false;
-    $('btn-more-dyn').classList.toggle('hidden', !state.dynHasMore);
-    $('btn-more-dyn').disabled = state.dynLoading || !state.dynHasMore;
+    updateLoadMoreFab('dyn-list', 'btn-more-dyn', {
+      hasMore: state.dynHasMore,
+      loading: false,
+    });
     $('btn-refresh-dyn').disabled = false;
   }
 }
@@ -995,6 +1103,7 @@ async function openComments(d) {
   state.cmtPage = 1;
   state.cmtHasMore = false;
   state.cmtSort = 'time';
+  state.cmtSourceExpanded = false;
   $('cmt-error').textContent = '';
   updateCommentSortButtons();
   renderCommentSource(d);
@@ -1017,7 +1126,6 @@ async function loadComments(reset) {
   if (state.cmtLoading) return;
   state.cmtLoading = true;
   $('cmt-error').textContent = '';
-  $('btn-more-cmt').classList.remove('hidden');
   $('btn-more-cmt').disabled = true;
   try {
     const page = reset ? 1 : state.cmtPage + 1;
@@ -1035,14 +1143,18 @@ async function loadComments(reset) {
       ? `共展示 ${state.comments.length} 条 · ${sortLabel}${state.cmtHasMore ? '（可继续加载）' : ''}`
       : '暂无评论';
     renderComments();
+    if (reset) {
+      const list = $('cmt-list');
+      if (list) list.scrollTop = 0;
+    }
   } catch (e) {
     $('cmt-error').textContent = e.message;
-    $('btn-more-cmt').classList.toggle('hidden', !state.cmtHasMore);
-    $('btn-more-cmt').disabled = !state.cmtHasMore;
   } finally {
     state.cmtLoading = false;
-    $('btn-more-cmt').classList.toggle('hidden', !state.cmtHasMore);
-    $('btn-more-cmt').disabled = !state.cmtHasMore;
+    updateLoadMoreFab('cmt-list', 'btn-more-cmt', {
+      hasMore: state.cmtHasMore,
+      loading: false,
+    });
   }
 }
 
@@ -1130,6 +1242,21 @@ function bind() {
   $('btn-more-dyn').onclick = () => loadDynamics(false);
   $('btn-close-player').onclick = () => closePlayer();
   $('btn-more-cmt').onclick = () => loadComments(false);
+  $('dyn-list').addEventListener('scroll', () => {
+    updateLoadMoreFab('dyn-list', 'btn-more-dyn', {
+      hasMore: state.dynHasMore,
+      loading: state.dynLoading,
+    });
+  }, { passive: true });
+  $('cmt-list').addEventListener('scroll', () => {
+    updateLoadMoreFab('cmt-list', 'btn-more-cmt', {
+      hasMore: state.cmtHasMore,
+      loading: state.cmtLoading,
+    });
+  }, { passive: true });
+  // Hide FABs until near bottom on first paint.
+  $('btn-more-dyn').classList.add('hidden');
+  $('btn-more-cmt').classList.add('hidden');
   $('btn-cmt-sort-time').onclick = () => setCommentSort('time');
   $('btn-cmt-sort-hot').onclick = () => setCommentSort('hot');
   $('btn-open-settings').onclick = () => openSettings();
