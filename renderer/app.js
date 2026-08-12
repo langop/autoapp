@@ -967,11 +967,18 @@ function isCjkChar(ch) {
 }
 
 function displayCommentName(comment, isUp) {
+  if (isUp) return '';
   const name = String(comment?.uname || '');
-  if (isUp || !name) return name;
+  if (!name) return name;
   const limit = isCjkChar(name[0]) ? 2 : 4;
   if (name.length <= limit) return name;
   return `${name.slice(0, limit)}...`;
+}
+
+function commentNameHtml(comment, isUp) {
+  const name = displayCommentName(comment, isUp);
+  if (!name) return '';
+  return `<strong title="${escapeHtml(comment.uname || '')}">${escapeHtml(name)}</strong>`;
 }
 
 function renderReplyBlock(r) {
@@ -980,7 +987,7 @@ function renderReplyBlock(r) {
     <div class="post-reply${up ? ' is-up' : ''}">
       <div class="post-head">
         ${up ? '<span class="up-badge">UP</span>' : ''}
-        <strong title="${escapeHtml(r.uname || '')}">${escapeHtml(displayCommentName(r, up))}</strong>
+        ${commentNameHtml(r, up)}
         <span class="muted post-like">赞 ${escapeHtml(r.like)}</span>
         <span class="muted post-time">${escapeHtml(fmtTime(r.ctime))}</span>
       </div>
@@ -1038,7 +1045,7 @@ function renderComments() {
         <div class="post-head">
           <span class="post-floor">#${floor}</span>
           ${up ? '<span class="up-badge">UP</span>' : ''}
-          <strong title="${escapeHtml(c.uname || '')}">${escapeHtml(displayCommentName(c, up))}</strong>
+          ${commentNameHtml(c, up)}
           <span class="muted post-like">赞 ${escapeHtml(c.like)}</span>
           <span class="muted post-time">${escapeHtml(fmtTime(c.ctime))}</span>
         </div>
