@@ -1,8 +1,6 @@
-const path = require('path');
 const { Tray, Menu, nativeImage } = require('electron');
 
-function loadTrayIcon() {
-  const iconPath = path.join(__dirname, '..', '..', 'icon.png');
+function loadTrayIcon(iconPath) {
   let image = nativeImage.createFromPath(iconPath);
   if (image.isEmpty()) {
     // 1x1 fallback so Tray construction does not throw in odd environments
@@ -35,8 +33,8 @@ function buildTray(image, onOpen, onQuit) {
   };
 }
 
-function createAppTray({ onOpen, onQuit }) {
-  let image = loadTrayIcon();
+function createAppTray({ onOpen, onQuit, iconPath }) {
+  let image = loadTrayIcon(iconPath);
   try {
     return buildTray(image, onOpen, onQuit);
   } catch (e) {

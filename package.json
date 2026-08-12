@@ -5,9 +5,41 @@
   "main": "electron/main.js",
   "scripts": {
     "start": "electron .",
-    "test": "node --test tests/favorites.test.js tests/settings.test.js tests/watch.test.js tests/watcher.test.js tests/scheduler.test.js tests/windowsNotify.test.js tests/client.test.js tests/user.test.js tests/dynamics.test.js tests/comments.test.js tests/closeDecision.test.js"
+    "icons": "node scripts/generate-icons.js",
+    "pack": "npm run icons && electron-builder --dir",
+    "dist": "npm run icons && electron-builder --win nsis",
+    "test": "node --test tests/favorites.test.js tests/settings.test.js tests/watch.test.js tests/watcher.test.js tests/scheduler.test.js tests/windowsNotify.test.js tests/client.test.js tests/user.test.js tests/dynamics.test.js tests/comments.test.js tests/closeDecision.test.js tests/userData.test.js tests/appIcon.test.js tests/packageBuild.test.js"
   },
   "devDependencies": {
-    "electron": "^33.2.0"
+    "electron": "^33.2.0",
+    "electron-builder": "^26.15.3",
+    "png-to-ico": "^3.0.2"
+  },
+  "build": {
+    "appId": "com.bili.up.viewer",
+    "productName": "Bili UP Viewer",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "electron/**/*",
+      "renderer/**/*",
+      "icon.png",
+      "package.json"
+    ],
+    "asar": true,
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Bili UP Viewer"
+    }
   }
 }

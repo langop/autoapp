@@ -36,6 +36,7 @@ function buildShortcutOptions({
 }
 
 function ensureWindowsNotifyShortcut({ app, shell }) {
+  if (app.isPackaged) return { ok: true, skipped: true };
   if (process.platform !== 'win32') return { ok: false, reason: 'not-win32' };
   const shortcutPath = path.join(
     app.getPath('appData'),

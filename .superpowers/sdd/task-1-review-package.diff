@@ -1,0 +1,223 @@
+﻿# Task 1 review package (working tree; no commits per policy)
+# Files in scope for Task 1
+ electron/store/settings.js | 11 +++++++++++
+ package.json               |  2 +-
+ tests/settings.test.js     | 20 ++++++++++++++++++++
+ 3 files changed, 32 insertions(+), 1 deletion(-)
+
+----- DIFF -----
+
+diff --git a/electron/store/settings.js b/electron/store/settings.js
+index 4e9b5ed..a179a4e 100644
+--- a/electron/store/settings.js
++++ b/electron/store/settings.js
+@@ -1,17 +1,24 @@
+ const fs = require('fs');
+ const path = require('path');
+ 
++const CLOSE_ACTIONS = new Set(['ask', 'tray', 'quit']);
++
++function normalizeCloseAction(value) {
++  return CLOSE_ACTIONS.has(value) ? value : 'ask';
++}
++
+ const DEFAULTS = {
+   cookie: '',
+   notifyEnabled: true,
+   notifyIntervalMin: 15,
++  closeAction: 'ask',
+ };
+ 
+ function clampInterval(value) {
+   const n = Number(value);
+   if (!Number.isFinite(n)) return DEFAULTS.notifyIntervalMin;
+   return Math.min(60, Math.max(5, Math.round(n)));
+ }
+ 
+ function createSettingsStore(filePath) {
+   function ensureDir() {
+@@ -30,20 +37,21 @@ function createSettingsStore(filePath) {
+         cookie: typeof data.cookie === 'string' ? data.cookie : DEFAULTS.cookie,
+         notifyEnabled:
+           typeof data.notifyEnabled === 'boolean'
+             ? data.notifyEnabled
+             : DEFAULTS.notifyEnabled,
+         notifyIntervalMin: clampInterval(
+           data.notifyIntervalMin != null
+             ? data.notifyIntervalMin
+             : DEFAULTS.notifyIntervalMin,
+         ),
++        closeAction: normalizeCloseAction(data.closeAction),
+       };
+     } catch {
+       return { ...DEFAULTS };
+     }
+   }
+ 
+   function write(settings) {
+     ensureDir();
+     fs.writeFileSync(filePath, JSON.stringify(settings, null, 2), 'utf8');
+   }
+@@ -59,18 +67,21 @@ function createSettingsStore(filePath) {
+           typeof partial?.cookie === 'string' ? partial.cookie.trim() : prev.cookie,
+         notifyEnabled:
+           typeof partial?.notifyEnabled === 'boolean'
+             ? partial.notifyEnabled
+             : prev.notifyEnabled,
+         notifyIntervalMin: clampInterval(
+           partial?.notifyIntervalMin != null
+             ? Number(partial.notifyIntervalMin)
+             : prev.notifyIntervalMin,
+         ),
++        closeAction: normalizeCloseAction(
++          partial?.closeAction != null ? partial.closeAction : prev.closeAction,
++        ),
+       };
+       write(next);
+       return next;
+     },
+   };
+ }
+ 
+ module.exports = { createSettingsStore };
+diff --git a/package.json b/package.json
+index 505c3f4..c28f295 100644
+--- a/package.json
++++ b/package.json
+@@ -1,13 +1,13 @@
+ {
+   "name": "bili-up-viewer",
+   "version": "0.1.0",
+   "private": true,
+   "main": "electron/main.js",
+   "scripts": {
+     "start": "electron .",
+-    "test": "node --test tests/favorites.test.js tests/settings.test.js tests/watch.test.js tests/watcher.test.js tests/client.test.js tests/user.test.js tests/dynamics.test.js tests/comments.test.js"
++    "test": "node --test tests/favorites.test.js tests/settings.test.js tests/watch.test.js tests/watcher.test.js tests/scheduler.test.js tests/windowsNotify.test.js tests/client.test.js tests/user.test.js tests/dynamics.test.js tests/comments.test.js tests/closeDecision.test.js"
+   },
+   "devDependencies": {
+     "electron": "^33.2.0"
+   }
+ }
+diff --git a/tests/settings.test.js b/tests/settings.test.js
+index 592e12f..99bbd62 100644
+--- a/tests/settings.test.js
++++ b/tests/settings.test.js
+@@ -18,43 +18,63 @@ describe('settings store', () => {
+ 
+   afterEach(() => {
+     fs.rmSync(dir, { recursive: true, force: true });
+   });
+ 
+   it('returns empty cookie by default', () => {
+     assert.deepEqual(store.get(), {
+       cookie: '',
+       notifyEnabled: true,
+       notifyIntervalMin: 15,
++      closeAction: 'ask',
+     });
+   });
+ 
+   it('saves and loads cookie', () => {
+     store.save({ cookie: 'SESSDATA=abc; bili_jct=xyz' });
+     assert.equal(store.get().cookie, 'SESSDATA=abc; bili_jct=xyz');
+   });
+ 
+   it('returns defaults when file is corrupt', () => {
+     fs.writeFileSync(file, '{not-json', 'utf8');
+     assert.deepEqual(store.get(), {
+       cookie: '',
+       notifyEnabled: true,
+       notifyIntervalMin: 15,
++      closeAction: 'ask',
+     });
+   });
+ 
+   it('saves notify settings and merges partial updates', () => {
+     store.save({ cookie: 'a=1', notifyEnabled: false, notifyIntervalMin: 30 });
+     store.save({ cookie: 'b=2' });
+     assert.deepEqual(store.get(), {
+       cookie: 'b=2',
+       notifyEnabled: false,
+       notifyIntervalMin: 30,
++      closeAction: 'ask',
+     });
+   });
+ 
+   it('clamps notifyIntervalMin to 5-60', () => {
+     assert.equal(store.save({ notifyIntervalMin: 3 }).notifyIntervalMin, 5);
+     assert.equal(store.save({ notifyIntervalMin: 99 }).notifyIntervalMin, 60);
+     assert.equal(store.save({ notifyIntervalMin: 20 }).notifyIntervalMin, 20);
+   });
++
++  it('defaults closeAction to ask', () => {
++    assert.equal(store.get().closeAction, 'ask');
++  });
++
++  it('saves closeAction and rejects invalid values', () => {
++    assert.equal(store.save({ closeAction: 'tray' }).closeAction, 'tray');
++    assert.equal(store.save({ closeAction: 'quit' }).closeAction, 'quit');
++    assert.equal(store.save({ closeAction: 'nope' }).closeAction, 'ask');
++  });
++
++  it('merges closeAction on partial save', () => {
++    store.save({ closeAction: 'tray' });
++    store.save({ cookie: 'x=1' });
++    assert.equal(store.get().closeAction, 'tray');
++    assert.equal(store.get().cookie, 'x=1');
++  });
+ });
+
+----- NEW FILE electron/tray/closeDecision.js -----
+
+function resolveCloseDecision({ closeAction, isQuitting }) {
+  if (isQuitting) return 'allow-quit';
+  if (closeAction === 'tray') return 'hide';
+  if (closeAction === 'quit') return 'allow-quit';
+  return 'ask';
+}
+
+module.exports = { resolveCloseDecision };
+
+----- NEW FILE tests/closeDecision.test.js -----
+
+const { describe, it } = require('node:test');
+const assert = require('node:assert/strict');
+const { resolveCloseDecision } = require('../electron/tray/closeDecision');
+
+describe('resolveCloseDecision', () => {
+  it('allows quit when isQuitting', () => {
+    assert.equal(
+      resolveCloseDecision({ closeAction: 'tray', isQuitting: true }),
+      'allow-quit',
+    );
+  });
+
+  it('hides when closeAction is tray', () => {
+    assert.equal(
+      resolveCloseDecision({ closeAction: 'tray', isQuitting: false }),
+      'hide',
+    );
+  });
+
+  it('allows quit when closeAction is quit', () => {
+    assert.equal(
+      resolveCloseDecision({ closeAction: 'quit', isQuitting: false }),
+      'allow-quit',
+    );
+  });
+
+  it('asks when closeAction is ask', () => {
+    assert.equal(
+      resolveCloseDecision({ closeAction: 'ask', isQuitting: false }),
+      'ask',
+    );
+  });
+
+  it('asks for unknown closeAction', () => {
+    assert.equal(
+      resolveCloseDecision({ closeAction: 'weird', isQuitting: false }),
+      'ask',
+    );
+  });
+});

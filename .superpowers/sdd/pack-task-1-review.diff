@@ -1,0 +1,250 @@
+﻿pack task 1
+ electron/main.js | 20 ++++++++++++++++++--
+ package.json     |  2 +-
+ 2 files changed, 19 insertions(+), 3 deletions(-)
+
+-----
+
+diff --git a/electron/main.js b/electron/main.js
+index 2ed7d38..c78f95a 100644
+--- a/electron/main.js
++++ b/electron/main.js
+@@ -21,41 +21,51 @@ const { fetchUserInfo } = require('./bilibili/user');
+ const { fetchDynamics } = require('./bilibili/dynamics');
+ const { fetchComments } = require('./bilibili/comments');
+ const { createScheduler } = require('./notify/scheduler');
+ const { runWatchRound } = require('./notify/watcher');
+ const {
+   resolveAppUserModelId,
+   ensureWindowsNotifyShortcut,
+ } = require('./notify/windowsNotify');
++const {
++  configureIsolatedUserData,
++  resolveInitialCookie,
++} = require('./paths/userData');
+ 
+ protocol.registerSchemesAsPrivileged([
+   {
+     scheme: 'bili-media',
+     privileges: {
+       standard: true,
+       secure: true,
+       supportFetchAPI: true,
+       bypassCSP: true,
+       stream: true,
+       corsEnabled: true,
+     },
+   },
+ ]);
+ 
++configureIsolatedUserData(app);
++
+ const favoritesPath = path.join(app.getPath('userData'), 'favorites.json');
+ const settingsPath = path.join(app.getPath('userData'), 'settings.json');
+ const watchPath = path.join(app.getPath('userData'), 'watch.json');
+ const favorites = createFavoritesStore(favoritesPath);
+ const settings = createSettingsStore(settingsPath);
+ const watch = createWatchStore(watchPath);
+ 
+ const savedCookie = settings.get().cookie || '';
+ const client = createClient({
+-  cookie: savedCookie || process.env.BILI_COOKIE || '',
++  cookie: resolveInitialCookie({
++    settingsCookie: savedCookie,
++    envCookie: process.env.BILI_COOKIE || '',
++    isPackaged: app.isPackaged,
++  }),
+ });
+ 
+ let mainWindow = null;
+ let appTray = null;
+ let isQuitting = false;
+ let closeDialogOpen = false;
+ const activeNotifications = new Set();
+ 
+@@ -318,17 +328,23 @@ app.whenReady().then(() => {
+   ipcMain.handle(
+     'getSettings',
+     wrap(async () => settings.get()),
+   );
+   ipcMain.handle(
+     'saveSettings',
+     wrap(async (_e, payload) => {
+       const next = settings.save(payload || {});
+-      client.setCookie(next.cookie || process.env.BILI_COOKIE || '');
++      client.setCookie(
++        resolveInitialCookie({
++          settingsCookie: next.cookie || '',
++          envCookie: process.env.BILI_COOKIE || '',
++          isPackaged: app.isPackaged,
++        }),
++      );
+       scheduler.restart();
+       return { ok: true, settings: next };
+     }),
+   );
+   ipcMain.handle(
+     'openExternal',
+     wrap(async (_e, rawUrl) => {
+       const u = new URL(String(rawUrl || ''));
+diff --git a/package.json b/package.json
+index c28f295..95f129f 100644
+--- a/package.json
++++ b/package.json
+@@ -1,13 +1,13 @@
+ {
+   "name": "bili-up-viewer",
+   "version": "0.1.0",
+   "private": true,
+   "main": "electron/main.js",
+   "scripts": {
+     "start": "electron .",
+-    "test": "node --test tests/favorites.test.js tests/settings.test.js tests/watch.test.js tests/watcher.test.js tests/scheduler.test.js tests/windowsNotify.test.js tests/client.test.js tests/user.test.js tests/dynamics.test.js tests/comments.test.js tests/closeDecision.test.js"
++    "test": "node --test tests/favorites.test.js tests/settings.test.js tests/watch.test.js tests/watcher.test.js tests/scheduler.test.js tests/windowsNotify.test.js tests/client.test.js tests/user.test.js tests/dynamics.test.js tests/comments.test.js tests/closeDecision.test.js tests/userData.test.js"
+   },
+   "devDependencies": {
+     "electron": "^33.2.0"
+   }
+ }
+
+----- NEW userData.js -----
+
+const fs = require('fs');
+const path = require('path');
+
+const DEV_DIR_NAME = 'bili-up-viewer-dev';
+const PROD_DIR_NAME = 'Bili UP Viewer';
+const LEGACY_DIR_NAME = 'bili-up-viewer';
+
+function resolveUserDataDir({ isPackaged, appData }) {
+  return path.join(appData, isPackaged ? PROD_DIR_NAME : DEV_DIR_NAME);
+}
+
+function maybeMigrateLegacyUserData({
+  legacyDir,
+  destDir,
+  exists = fs.existsSync,
+  copyFn = (from, to) => fs.cpSync(from, to, { recursive: true }),
+}) {
+  if (!exists(legacyDir) || exists(destDir)) return { migrated: false };
+  copyFn(legacyDir, destDir);
+  return { migrated: true };
+}
+
+function configureIsolatedUserData(app) {
+  const appData = app.getPath('appData');
+  const isPackaged = app.isPackaged;
+  const dest = resolveUserDataDir({ isPackaged, appData });
+  if (!isPackaged) {
+    const legacyDir = path.join(appData, LEGACY_DIR_NAME);
+    try {
+      maybeMigrateLegacyUserData({ legacyDir, destDir: dest });
+    } catch (e) {
+      console.error('[userData] legacy migrate failed', e);
+    }
+  }
+  app.setPath('userData', dest);
+  return dest;
+}
+
+function resolveInitialCookie({ settingsCookie, envCookie, isPackaged }) {
+  const fromSettings = String(settingsCookie || '').trim();
+  if (fromSettings) return fromSettings;
+  if (!isPackaged) return String(envCookie || '').trim();
+  return '';
+}
+
+module.exports = {
+  DEV_DIR_NAME,
+  PROD_DIR_NAME,
+  LEGACY_DIR_NAME,
+  resolveUserDataDir,
+  maybeMigrateLegacyUserData,
+  configureIsolatedUserData,
+  resolveInitialCookie,
+};
+
+----- NEW userData.test.js -----
+
+const { describe, it } = require('node:test');
+const assert = require('node:assert/strict');
+const path = require('path');
+const {
+  resolveUserDataDir,
+  maybeMigrateLegacyUserData,
+  resolveInitialCookie,
+} = require('../electron/paths/userData');
+
+describe('resolveUserDataDir', () => {
+  it('uses bili-up-viewer-dev when not packaged', () => {
+    assert.equal(
+      resolveUserDataDir({ isPackaged: false, appData: 'C:\\Users\\x\\AppData\\Roaming' }),
+      path.join('C:\\Users\\x\\AppData\\Roaming', 'bili-up-viewer-dev'),
+    );
+  });
+
+  it('uses Bili UP Viewer when packaged', () => {
+    assert.equal(
+      resolveUserDataDir({ isPackaged: true, appData: 'C:\\Users\\x\\AppData\\Roaming' }),
+      path.join('C:\\Users\\x\\AppData\\Roaming', 'Bili UP Viewer'),
+    );
+  });
+});
+
+describe('maybeMigrateLegacyUserData', () => {
+  it('copies when legacy exists and dest missing', () => {
+    const calls = [];
+    const result = maybeMigrateLegacyUserData({
+      legacyDir: 'L',
+      destDir: 'D',
+      exists: (p) => p === 'L',
+      copyFn: (from, to) => calls.push([from, to]),
+    });
+    assert.equal(result.migrated, true);
+    assert.deepEqual(calls, [['L', 'D']]);
+  });
+
+  it('skips when dest already exists', () => {
+    const result = maybeMigrateLegacyUserData({
+      legacyDir: 'L',
+      destDir: 'D',
+      exists: () => true,
+      copyFn: () => {
+        throw new Error('should not copy');
+      },
+    });
+    assert.equal(result.migrated, false);
+  });
+});
+
+describe('resolveInitialCookie', () => {
+  it('allows env cookie only when not packaged', () => {
+    assert.equal(
+      resolveInitialCookie({
+        settingsCookie: '',
+        envCookie: 'SESSDATA=dev',
+        isPackaged: false,
+      }),
+      'SESSDATA=dev',
+    );
+    assert.equal(
+      resolveInitialCookie({
+        settingsCookie: '',
+        envCookie: 'SESSDATA=dev',
+        isPackaged: true,
+      }),
+      '',
+    );
+  });
+
+  it('prefers settings cookie always', () => {
+    assert.equal(
+      resolveInitialCookie({
+        settingsCookie: 'from-file',
+        envCookie: 'from-env',
+        isPackaged: false,
+      }),
+      'from-file',
+    );
+  });
+});

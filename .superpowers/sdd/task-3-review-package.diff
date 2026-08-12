@@ -1,0 +1,102 @@
+﻿Task 3 review package
+ renderer/app.js     | 25 +++++++++++++++++++++++++
+ renderer/index.html | 14 ++++++++++++++
+ renderer/styles.css | 35 +++++++++++++++++++++++++++++++++++
+ 3 files changed, 74 insertions(+)
+
+----- DIFF -----
+
+diff --git a/renderer/index.html b/renderer/index.html
+index fa4a239..52a83ad 100644
+--- a/renderer/index.html
++++ b/renderer/index.html
+@@ -81,16 +81,25 @@
+           <h3 class="section-title">鍔ㄦ€佹彁閱?/h3>
+           <label class="check-label">
+             <input id="notify-enabled" type="checkbox" />
+             寮€鍚姩鎬佹彁閱?           </label>
+           <label class="field-label" for="notify-interval">妫€鏌ラ棿闅旓紙鍒嗛挓锛?/label>
+           <input id="notify-interval" type="number" min="5" max="60" step="1" value="15" />
+         </div>
++        <div class="settings-section">
++          <h3 class="section-title">绐楀彛鍏抽棴</h3>
++          <label class="field-label" for="close-action">鍏抽棴绐楀彛鏃?/label>
++          <select id="close-action">
++            <option value="ask">姣忔璇㈤棶</option>
++            <option value="tray">鏈€灏忓寲鍒版墭鐩?/option>
++            <option value="quit">閫€鍑哄簲鐢?/option>
++          </select>
++        </div>
+         <div class="row actions">
+           <button id="btn-save-settings" class="primary flex-1" type="button">淇濆瓨</button>
+           <button id="btn-clear-cookie" class="flex-1" type="button">娓呴櫎</button>
+         </div>
+         <p id="settings-msg" class="ok"></p>
+         <p id="settings-error" class="err"></p>
+       </main>
+ 
+@@ -113,11 +122,16 @@
+     <div id="lightbox" class="lightbox hidden" aria-hidden="true">
+       <button id="lb-close" class="lb-close" type="button" aria-label="鍏抽棴">脳</button>
+       <button id="lb-prev" class="lb-nav prev" type="button" aria-label="涓婁竴寮?>鈥?/button>
+       <img id="lb-img" alt="" />
+       <button id="lb-next" class="lb-nav next" type="button" aria-label="涓嬩竴寮?>鈥?/button>
+       <div id="lb-counter" class="lb-counter"></div>
+     </div>
+ 
++    <div id="notify-toast" class="notify-toast hidden" role="status" aria-live="polite">
++      <div id="notify-toast-title" class="notify-toast-title"></div>
++      <div id="notify-toast-body" class="notify-toast-body"></div>
++    </div>
++
+     <script src="app.js"></script>
+   </body>
+ </html>
+
+----- app.js hunks mentioning close -----
+
+
+     try {
+       const s = await call(window.biliApi.getSettings);
+       $('cookie-input').value = s.cookie || '';
+       $('notify-enabled').checked = s.notifyEnabled !== false;
+       $('notify-interval').value = s.notifyIntervalMin ?? 15;
+> +    $('close-action').value = s.closeAction || 'ask';
+     } catch (e) {
+       $('cookie-input').value = '';
+       $('settings-error').textContent = e.message;
+     }
+     showView('settings');
+     try {
+       await call(window.biliApi.saveSettings, {
+         cookie: $('cookie-input').value,
+         notifyEnabled: $('notify-enabled').checked,
+         notifyIntervalMin: Number($('notify-interval').value),
+> +      closeAction: $('close-action').value,
+       });
+       $('settings-msg').textContent = '宸蹭繚瀛橈紝绔嬪嵆鐢熸晥锛堟棤闇€閲嶅惎锛?;
+     } catch (e) {
+       $('settings-error').textContent = e.message;
+     }
+
+
+
+
+----- styles select -----
+
+
+   }
+   input[type="text"],
+   input[type="number"],
+> +select,
+   textarea {
+     flex: 1;
+     width: 100%;
+     padding: 10px 11px;
+     border: 1px solid var(--line);
+  @@ -768,5 +769,39 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
+     flex: 0 0 auto;
+     margin: 0;
+
+
+

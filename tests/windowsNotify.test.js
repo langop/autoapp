@@ -5,6 +5,7 @@ const {
   PACKAGED_AUMID,
   resolveAppUserModelId,
   buildShortcutOptions,
+  ensureWindowsNotifyShortcut,
 } = require('../electron/notify/windowsNotify');
 
 describe('resolveAppUserModelId', () => {
@@ -59,5 +60,15 @@ describe('buildShortcutOptions', () => {
     assert.equal(opts.cwd, path.dirname(execPath));
     assert.equal(opts.args, '');
     assert.equal(opts.appUserModelId, PACKAGED_AUMID);
+  });
+});
+
+describe('ensureWindowsNotifyShortcut', () => {
+  it('skips shortcut creation when app is packaged', () => {
+    const result = ensureWindowsNotifyShortcut({
+      app: { isPackaged: true, getPath: () => '' },
+      shell: {},
+    });
+    assert.deepEqual(result, { ok: true, skipped: true });
   });
 });

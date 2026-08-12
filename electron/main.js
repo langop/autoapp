@@ -26,6 +26,11 @@ const {
   resolveAppUserModelId,
   ensureWindowsNotifyShortcut,
 } = require('./notify/windowsNotify');
+const {
+  configureIsolatedUserData,
+  resolveInitialCookie,
+} = require('./paths/userData');
+const { resolveAppIconPath } = require('./appIcon');
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -41,6 +46,8 @@ protocol.registerSchemesAsPrivileged([
   },
 ]);
 
+configureIsolatedUserData(app);
+
 const favoritesPath = path.join(app.getPath('userData'), 'favorites.json');
 const settingsPath = path.join(app.getPath('userData'), 'settings.json');
 const watchPath = path.join(app.getPath('userData'), 'watch.json');
@@ -50,7 +57,11 @@ const watch = createWatchStore(watchPath);
 
 const savedCookie = settings.get().cookie || '';
 const client = createClient({
-  cookie: savedCookie || process.env.BILI_COOKIE || '',
+  cookie: resolveInitialCookie({
+    settingsCookie: savedCookie,
+    envCookie: process.env.BILI_COOKIE || '',
+    isPackaged: app.isPackaged,
+  }),
 });
 
 let mainWindow = null;
@@ -193,6 +204,7 @@ function setupImageHeaders() {
 }
 
 function createWindow() {
+  const iconPath = resolveAppIconPath({ appPath: app.getAppPath() });
   mainWindow = new BrowserWindow({
     width: 390,
     height: 633,
@@ -200,6 +212,7 @@ function createWindow() {
     resizable: false,
     maximizable: false,
     fullscreenable: false,
+    icon: iconPath,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -323,7 +336,13 @@ app.whenReady().then(() => {
     'saveSettings',
     wrap(async (_e, payload) => {
       const next = settings.save(payload || {});
-      client.setCookie(next.cookie || process.env.BILI_COOKIE || '');
+      client.setCookie(
+        resolveInitialCookie({
+          settingsCookie: next.cookie || '',
+          envCookie: process.env.BILI_COOKIE || '',
+          isPackaged: app.isPackaged,
+        }),
+      );
       scheduler.restart();
       return { ok: true, settings: next };
     }),
@@ -348,10 +367,12 @@ app.whenReady().then(() => {
     }),
   );
 
+  const iconPath = resolveAppIconPath({ appPath: app.getAppPath() });
   createWindow();
   appTray = createAppTray({
     onOpen: openFromTray,
     onQuit: quitApp,
+    iconPath,
   });
   scheduler.start();
 });

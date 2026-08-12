@@ -1,0 +1,334 @@
+﻿# Task 2 review package (working tree)
+ electron/main.js | 115 ++++++++++++++++++++++++++++++++++++++++++++++++++++---
+ 1 file changed, 109 insertions(+), 6 deletions(-)
+
+----- DIFF main.js -----
+
+diff --git a/electron/main.js b/electron/main.js
+index 3a9323c..9aa8f9a 100644
+--- a/electron/main.js
++++ b/electron/main.js
+@@ -1,31 +1,38 @@
+ const {
+   app,
+   BrowserWindow,
+   ipcMain,
+   Menu,
+   session,
+   protocol,
+   net,
+   shell,
+   Notification,
++  dialog,
+ } = require('electron');
+ const path = require('path');
++const { resolveCloseDecision } = require('./tray/closeDecision');
++const { createAppTray, showMainWindow } = require('./tray/appTray');
+ const { createFavoritesStore } = require('./store/favorites');
+ const { createSettingsStore } = require('./store/settings');
+ const { createWatchStore } = require('./store/watch');
+ const { createClient, BiliRequestError } = require('./bilibili/client');
+ const { fetchUserInfo } = require('./bilibili/user');
+ const { fetchDynamics } = require('./bilibili/dynamics');
+ const { fetchComments } = require('./bilibili/comments');
+ const { createScheduler } = require('./notify/scheduler');
+ const { runWatchRound } = require('./notify/watcher');
++const {
++  resolveAppUserModelId,
++  ensureWindowsNotifyShortcut,
++} = require('./notify/windowsNotify');
+ 
+ protocol.registerSchemesAsPrivileged([
+   {
+     scheme: 'bili-media',
+     privileges: {
+       standard: true,
+       secure: true,
+       supportFetchAPI: true,
+       bypassCSP: true,
+       stream: true,
+@@ -40,37 +47,75 @@ const watchPath = path.join(app.getPath('userData'), 'watch.json');
+ const favorites = createFavoritesStore(favoritesPath);
+ const settings = createSettingsStore(settingsPath);
+ const watch = createWatchStore(watchPath);
+ 
+ const savedCookie = settings.get().cookie || '';
+ const client = createClient({
+   cookie: savedCookie || process.env.BILI_COOKIE || '',
+ });
+ 
+ let mainWindow = null;
++let appTray = null;
++let isQuitting = false;
++let closeDialogOpen = false;
+ const activeNotifications = new Set();
+ 
++function hideToTrayOrQuit() {
++  if (!appTray) {
++    isQuitting = true;
++    app.quit();
++    return;
++  }
++  mainWindow.hide();
++}
++
++function quitApp() {
++  isQuitting = true;
++  if (appTray) {
++    appTray.destroy();
++    appTray = null;
++  }
++  app.quit();
++}
++
++function openFromTray() {
++  if (!mainWindow || mainWindow.isDestroyed()) {
++    createWindow();
++  } else {
++    showMainWindow(mainWindow);
++  }
++}
++
++function showInAppNotify(payload) {
++  if (!mainWindow || mainWindow.isDestroyed()) return;
++  mainWindow.webContents.send('favorite-dynamic-notify', payload);
++}
++
+ function showDesktopNotify(payload) {
++  // Always mirror in-app so a missed Windows toast is still visible.
++  showInAppNotify(payload);
+   if (!Notification.isSupported()) return;
+   const n = new Notification({ title: payload.title, body: payload.body });
+   activeNotifications.add(n);
+   const release = () => activeNotifications.delete(n);
+   n.on('click', () => {
+     release();
+     if (mainWindow) {
+-      if (mainWindow.isMinimized()) mainWindow.restore();
+-      mainWindow.focus();
++      showMainWindow(mainWindow);
+       mainWindow.webContents.send('open-favorite-dynamics', { uid: payload.uid });
+     }
+   });
+   n.on('close', release);
+-  n.on('failed', release);
++  n.on('failed', (event, error) => {
++    release();
++    console.error('[notify] desktop notification failed', error || event);
++  });
+   n.show();
+ }
+ 
+ async function runNotifyWatchRound() {
+   const cfg = settings.get();
+   if (!cfg.notifyEnabled) return;
+   await runWatchRound({
+     favorites: favorites.list(),
+     fetchDynamicsForUid: (uid) => fetchDynamics(client, { uid, offset: '' }),
+     watch,
+@@ -156,59 +201,110 @@ function createWindow() {
+     maximizable: false,
+     fullscreenable: false,
+     webPreferences: {
+       preload: path.join(__dirname, 'preload.js'),
+       contextIsolation: true,
+       nodeIntegration: false,
+       webviewTag: true,
+     },
+   });
+   mainWindow.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
++  mainWindow.on('close', async (event) => {
++    const decision = resolveCloseDecision({
++      closeAction: settings.get().closeAction,
++      isQuitting,
++    });
++    if (decision === 'allow-quit') return;
++    event.preventDefault();
++    if (decision === 'hide') {
++      hideToTrayOrQuit();
++      return;
++    }
++    // ask
++    if (closeDialogOpen) return;
++    closeDialogOpen = true;
++    try {
++      const { response, checkboxChecked } = await dialog.showMessageBox(mainWindow, {
++        type: 'question',
++        title: '鍏抽棴绐楀彛',
++        message: '鍏抽棴绐楀彛鍚庢槸鍚︾户缁湪鍚庡彴鎺ユ敹鍔ㄦ€佹彁閱掞紵',
++        checkboxLabel: '璁颁綇鎴戠殑閫夋嫨',
++        checkboxChecked: false,
++        buttons: ['鏈€灏忓寲鍒版墭鐩?, '閫€鍑哄簲鐢?, '鍙栨秷'],
++        defaultId: 0,
++        cancelId: 2,
++        noLink: true,
++      });
++      if (response === 2) return; // 鍙栨秷
++      if (response === 0) {
++        if (checkboxChecked) settings.save({ closeAction: 'tray' });
++        hideToTrayOrQuit();
++        return;
++      }
++      if (response === 1) {
++        if (checkboxChecked) settings.save({ closeAction: 'quit' });
++        isQuitting = true;
++        app.quit();
++      }
++    } finally {
++      closeDialogOpen = false;
++    }
++  });
+   mainWindow.on('closed', () => {
+     mainWindow = null;
+   });
+ }
+ 
+ app.on('web-contents-created', (_event, contents) => {
+   if (contents.getType() === 'webview') {
+     contents.setWindowOpenHandler(({ url }) => {
+       if (/^https?:\/\//i.test(url)) contents.loadURL(url);
+       return { action: 'deny' };
+     });
+   }
+ });
+ 
+ if (process.platform === 'win32') {
+-  app.setAppUserModelId('com.bili.up.viewer');
++  app.setAppUserModelId(resolveAppUserModelId());
+ }
+ 
+ app.whenReady().then(() => {
+   setupMediaProtocol();
+   setupImageHeaders();
+   Menu.setApplicationMenu(null);
++  const shortcut = ensureWindowsNotifyShortcut({ app, shell });
++  if (!shortcut.ok) {
++    console.error('[notify] start menu shortcut setup failed', shortcut.reason);
++  }
+ 
+   ipcMain.handle('getUserInfo', wrap(async (_e, uid) => fetchUserInfo(client, uid)));
+   ipcMain.handle('listFavorites', wrap(async () => favorites.list()));
+   ipcMain.handle(
+     'addFavorite',
+     wrap(async (_e, user) => favorites.add(user)),
+   );
+   ipcMain.handle(
+     'removeFavorite',
+     wrap(async (_e, uid) => {
+       watch.remove(uid);
+       return favorites.remove(uid);
+     }),
+   );
+   ipcMain.handle(
+     'setFavoriteNotify',
+-    wrap(async (_e, { uid, enabled }) => favorites.setNotify(uid, enabled)),
++    wrap(async (_e, { uid, enabled }) => {
++      const list = favorites.setNotify(uid, enabled);
++      // Baseline immediately on enable so posts before the next interval
++      // are not swallowed as a silent "init" cursor write.
++      if (enabled) await runNotifyWatchRound();
++      return list;
++    }),
+   );
+   ipcMain.handle(
+     'reorderFavorites',
+     wrap(async (_e, uids) => favorites.reorder(uids)),
+   );
+   ipcMain.handle(
+     'getDynamics',
+     wrap(async (_e, payload) => fetchDynamics(client, payload || {})),
+   );
+   ipcMain.handle(
+@@ -242,24 +338,31 @@ app.whenReady().then(() => {
+         !host.endsWith('.b23.tv')
+       ) {
+         throw new Error('浠呭厑璁告墦寮€ B 绔欓摼鎺?);
+       }
+       await shell.openExternal(u.toString());
+       return { ok: true };
+     }),
+   );
+ 
+   createWindow();
++  appTray = createAppTray({
++    onOpen: openFromTray,
++    onQuit: quitApp,
++  });
+   scheduler.start();
+ });
+ 
+ app.on('before-quit', () => {
++  isQuitting = true;
+   scheduler.stop();
+ });
+ 
+ app.on('window-all-closed', () => {
+-  if (process.platform !== 'darwin') app.quit();
++  if (process.platform === 'darwin') return;
++  if (isQuitting) app.quit();
++  // 闅愯棌鍒版墭鐩樻椂涓?quit
+ });
+ 
+ app.on('activate', () => {
+   if (BrowserWindow.getAllWindows().length === 0) createWindow();
+ });
+
+----- NEW FILE electron/tray/appTray.js -----
+
+const path = require('path');
+const { Tray, Menu, nativeImage } = require('electron');
+
+function loadTrayIcon() {
+  const iconPath = path.join(__dirname, '..', '..', 'buv.png');
+  let image = nativeImage.createFromPath(iconPath);
+  if (image.isEmpty()) {
+    // 1x1 fallback so Tray construction does not throw in odd environments
+    image = nativeImage.createEmpty();
+  }
+  return image;
+}
+
+function showMainWindow(win) {
+  if (!win || win.isDestroyed()) return;
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
+}
+
+function buildTray(image, onOpen, onQuit) {
+  const tray = new Tray(image);
+  tray.setToolTip('Bili UP Viewer');
+  const menu = Menu.buildFromTemplate([
+    { label: '鎵撳紑', click: () => onOpen() },
+    { type: 'separator' },
+    { label: '閫€鍑?, click: () => onQuit() },
+  ]);
+  tray.setContextMenu(menu);
+  tray.on('click', () => onOpen());
+  return {
+    destroy() {
+      tray.destroy();
+    },
+  };
+}
+
+function createAppTray({ onOpen, onQuit }) {
+  let image = loadTrayIcon();
+  try {
+    return buildTray(image, onOpen, onQuit);
+  } catch (e) {
+    image = nativeImage.createFromPath(process.execPath);
+    if (image.isEmpty()) {
+      console.error('[tray] failed to load tray icon');
+      return null;
+    }
+    try {
+      return buildTray(image, onOpen, onQuit);
+    } catch (err) {
+      console.error('[tray] failed to create tray', err);
+      return null;
+    }
+  }
+}
+
+module.exports = { createAppTray, showMainWindow, loadTrayIcon };
