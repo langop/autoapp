@@ -32,6 +32,15 @@ function buildNotifyPayload(up, item) {
   };
 }
 
+/** Mark the latest non-pinned dynamic as seen (e.g. after user refreshes the feed). */
+function markDynamicsSeen(watch, uid, items) {
+  const latest = pickLatestNonPinned(items);
+  if (!latest?.id || uid == null || uid === '') return null;
+  const id = String(latest.id);
+  watch.set(uid, id);
+  return id;
+}
+
 async function runWatchRound({ favorites, fetchDynamicsForUid, watch, onNotify }) {
   const targets = favorites.filter((f) => f.notifyEnabled);
   for (const up of targets) {
@@ -46,6 +55,7 @@ async function runWatchRound({ favorites, fetchDynamicsForUid, watch, onNotify }
         continue;
       }
       if (kind === 'changed') {
+        // Only one toast for the newest unread item, even if several arrived.
         onNotify(buildNotifyPayload(up, latest));
         watch.set(up.uid, latest.id);
       }
@@ -59,5 +69,6 @@ module.exports = {
   pickLatestNonPinned,
   diffWatchUpdate,
   buildNotifyPayload,
+  markDynamicsSeen,
   runWatchRound,
 };

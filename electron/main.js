@@ -21,7 +21,7 @@ const { fetchUserInfo } = require('./bilibili/user');
 const { fetchDynamics } = require('./bilibili/dynamics');
 const { fetchComments } = require('./bilibili/comments');
 const { createScheduler } = require('./notify/scheduler');
-const { runWatchRound } = require('./notify/watcher');
+const { runWatchRound, markDynamicsSeen } = require('./notify/watcher');
 const {
   resolveAppUserModelId,
   ensureWindowsNotifyShortcut,
@@ -328,7 +328,16 @@ app.whenReady().then(() => {
   );
   ipcMain.handle(
     'getDynamics',
-    wrap(async (_e, payload) => fetchDynamics(client, payload || {})),
+    wrap(async (_e, payload) => {
+      const req = payload || {};
+      const res = await fetchDynamics(client, req);
+      // First page only: opening/refreshing the feed marks latest as seen,
+      // so the watcher will not re-notify for content already viewed.
+      if (!req.offset) {
+        markDynamicsSeen(watch, req.uid, res.items);
+      }
+      return res;
+    }),
   );
   ipcMain.handle(
     'getComments',

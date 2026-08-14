@@ -4,6 +4,7 @@ const {
   pickLatestNonPinned,
   diffWatchUpdate,
   buildNotifyPayload,
+  markDynamicsSeen,
   runWatchRound,
 } = require('../electron/notify/watcher');
 
@@ -85,6 +86,36 @@ describe('buildNotifyPayload', () => {
   });
 });
 
+describe('markDynamicsSeen', () => {
+  it('sets cursor to latest non-pinned id', () => {
+    const watch = {
+      data: {},
+      set(uid, id) {
+        this.data[uid] = { lastDynamicId: id };
+      },
+    };
+    const id = markDynamicsSeen(watch, '9', [
+      { id: 'top', isTop: true },
+      { id: 'latest', isTop: false },
+      { id: 'older', isTop: false },
+    ]);
+    assert.equal(id, 'latest');
+    assert.equal(watch.data['9'].lastDynamicId, 'latest');
+  });
+
+  it('returns null and does not write when nothing usable', () => {
+    const watch = {
+      wrote: false,
+      set() {
+        this.wrote = true;
+      },
+    };
+    assert.equal(markDynamicsSeen(watch, '1', []), null);
+    assert.equal(markDynamicsSeen(watch, '1', [{ id: 't', isTop: true }]), null);
+    assert.equal(watch.wrote, false);
+  });
+});
+
 describe('runWatchRound', () => {
   it('init: sets cursor without notifying on first check', async () => {
     const watch = {
@@ -132,6 +163,34 @@ describe('runWatchRound', () => {
     assert.equal(notified[0].title, 'A 更新了动态');
     assert.equal(notified[0].body, 'fresh');
     assert.equal(watch.data['1'].lastDynamicId, 'new');
+  });
+
+  it('changed with multiple newer posts: notifies only the newest', async () => {
+    const watch = {
+      data: { '1': { lastDynamicId: 'old' } },
+      get(uid) {
+        return this.data[uid];
+      },
+      set(uid, id) {
+        this.data[uid] = { lastDynamicId: id };
+      },
+    };
+    const notified = [];
+    await runWatchRound({
+      favorites: [{ uid: '1', name: 'A', notifyEnabled: true }],
+      fetchDynamicsForUid: async () => ({
+        items: [
+          { id: 'newest', isTop: false, title: 'newest', text: '' },
+          { id: 'mid', isTop: false, title: 'mid', text: '' },
+          { id: 'old', isTop: false, title: 'old', text: '' },
+        ],
+      }),
+      watch,
+      onNotify: (p) => notified.push(p),
+    });
+    assert.equal(notified.length, 1);
+    assert.equal(notified[0].body, 'newest');
+    assert.equal(watch.data['1'].lastDynamicId, 'newest');
   });
 
   it('same: does not notify or update cursor', async () => {
