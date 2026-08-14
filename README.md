@@ -1,6 +1,6 @@
 # Bili UP Viewer
 
-Electron 桌面工具：查询 B 站 UP 主资料、本地收藏，并按需浏览动态与评论；支持单个 UP 的新动态桌面提醒，以及关闭到托盘后台驻留。
+Electron 桌面工具：查询 B 站 UP 主资料、本地收藏，并按需浏览动态与评论；支持多个 UP 的新动态桌面提醒，以及关闭到托盘后台驻留。
 
 当前版本 `0.1.0`，主要面向 **Windows**（托盘、通知、NSIS 安装包）。
 
@@ -8,7 +8,7 @@ Electron 桌面工具：查询 B 站 UP 主资料、本地收藏，并按需浏�
 
 ### 收藏列表
 
-![收藏列表](https://github.com/langop/autoapp/raw/main/eg1.png) 
+![收藏列表](https://github.com/langop/autoapp/raw/main/eg1.png)
 
 ## 功能
 
